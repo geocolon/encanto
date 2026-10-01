@@ -12,8 +12,7 @@ Everything is generated in code inside a single `index.html`: terrain, trees, gr
 | --- | --- |
 | Mouse to look (click to capture) | Drag on the right side to look |
 | W A S D or arrow keys to move | Left-thumb joystick to walk |
-| Shift to sprint, Space to jump | Run and Jump buttons |
-| E to read the Waystone, Esc to pause | Tap the Waystone prompt |
+| Shift to sprint, Space to jump, Esc to pause | Run and Jump buttons |
 
 ## What's in the valley
 

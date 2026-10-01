@@ -15,7 +15,6 @@
 :root{
   --ink:#f3ecd6;
   --ink-dim:#c9c0a4;
-  --panel:rgba(16,24,18,.8);
   --panel-edge:rgba(243,236,214,.28);
   --glow:#ffb64a;
   --leaf:#8fdc7a;
@@ -41,8 +40,6 @@ canvas{display:block;outline:none}
 #soundBtn:focus-visible{outline:2px solid var(--glow);outline-offset:2px}
 #hint{left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));font-size:13px;line-height:1.7;color:var(--ink-dim)}
 #hint kbd{font-family:var(--body);font-weight:600;color:var(--ink);border:1px solid var(--panel-edge);border-radius:4px;padding:0 6px;background:rgba(0,0,0,.25)}
-#prompt{left:50%;bottom:22%;transform:translateX(-50%);pointer-events:auto;cursor:pointer;background:var(--panel);border:1px solid var(--panel-edge);border-radius:999px;padding:8px 18px;font-size:15px;display:flex;gap:10px;align-items:center}
-#prompt b{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 4px;border-radius:12px;background:var(--ink);color:#1a241c;font-size:12px}
 #toast{left:50%;top:22%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(20px,3vw,30px);letter-spacing:.08em;opacity:0;transition:opacity .6s;text-align:center}
 #toast.show{opacity:1}
 #reticle{left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--ink);opacity:.5}
@@ -57,12 +54,6 @@ canvas{display:block;outline:none}
 .keys{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;font-size:13px;color:var(--ink-dim)}
 .keys kbd{font:600 12px var(--body);color:var(--ink);border:1px solid var(--panel-edge);border-radius:4px;padding:1px 6px}
 #loading{font-size:13px;color:var(--glow);letter-spacing:.1em;text-transform:uppercase}
-#panel .card{background:var(--panel);border:1px solid var(--panel-edge);border-radius:14px;padding:28px 24px;text-align:left}
-#panel h2{font-family:var(--display);margin:0;font-size:28px;letter-spacing:.05em;color:var(--glow)}
-.field{display:grid;gap:6px}
-.field label{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-dim)}
-.field input,.field textarea{font:15px var(--body);color:var(--ink);background:rgba(0,0,0,.3);border:1px solid var(--panel-edge);border-radius:8px;padding:10px 12px}
-.soon{font-size:12px;color:var(--glow);letter-spacing:.1em;text-transform:uppercase}
 #stick{left:24px;bottom:calc(28px + env(safe-area-inset-bottom,0px));width:110px;height:110px;border-radius:50%;border:1px solid var(--panel-edge);background:rgba(0,0,0,.18);display:none}
 #stick i{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(243,236,214,.55)}
 body.touch #stick{display:block}
@@ -92,7 +83,6 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
   <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>←</kbd><kbd>→</kbd> turn</div>
   <div>Mouse look · <kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump · <kbd>Esc</kbd> pause</div>
 </div>
-<div class="hud" id="prompt" hidden><b>E</b><span>Read the Waystone</span></div>
 <div class="hud" id="toast"></div>
 <div class="hud" id="stick"><i></i></div>
 <div class="hud" id="actions">
@@ -113,22 +103,11 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
     <p class="rotate">Turn your phone sideways for the best view.</p>
     <div class="keys desk-only">
       <span><kbd>Mouse</kbd> look</span><span><kbd>WASD</kbd> / <kbd>Arrows</kbd> move</span>
-      <span><kbd>Shift</kbd> sprint</span><span><kbd>Space</kbd> jump</span><span><kbd>E</kbd> interact</span>
+      <span><kbd>Shift</kbd> sprint</span><span><kbd>Space</kbd> jump</span>
     </div>
     <span id="loading">Growing the forest…</span>
     <button class="btn" id="enter" hidden>Enter the rainforest</button>
   </div>
-</div>
-
-<div class="overlay" id="panel" hidden>
-  <form class="card" id="wayForm" autocomplete="off">
-    <h2>The Waystone</h2>
-    <p>Travelers who reach this stone leave their name in its ledger. This is where your data-collection form will live.</p>
-    <div class="field"><label for="wsName">Traveler name</label><input id="wsName" placeholder="Your name" disabled></div>
-    <div class="field"><label for="wsMsg">Message</label><textarea id="wsMsg" rows="3" placeholder="What did you see in the Reach?" disabled></textarea></div>
-    <span class="soon">Form wiring comes in the next build</span>
-    <button class="btn" type="button" id="closePanel">Return to the rainforest</button>
-  </form>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -147,7 +126,7 @@ const rr = (a,b)=>a+(b-a)*rand();
 const $ = id => document.getElementById(id);
 
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-if (IS_TOUCH){ document.body.classList.add('touch'); document.querySelector('#prompt b').textContent = 'Tap'; }
+if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
   ? {dpr:1.25, shadow:1024, aa:false, grass:22000, grassHalf:18, grassMid:16000, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120}
@@ -1253,23 +1232,21 @@ const EYE = 1.25;
 const player = {x:pathX(124), z:124, y:0, vy:0, yaw:0, pitch:0, grounded:true, bob:0, seeds:0};
 player.y = height(player.x,player.z)+EYE;
 const keys = {};
-let started=false, panelOpen=false, locked=false, dragging=false, sprintOn=false, nearWaystone=false;
+let started=false, locked=false, dragging=false, sprintOn=false;
 
 addEventListener('keydown', e => {
-  if (panelOpen) return;
   keys[e.code]=true;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
-  if (e.code==='KeyE' && nearWaystone) openPanel();
 });
 addEventListener('keyup', e => { keys[e.code]=false; });
 addEventListener('blur', () => { for (const k in keys) keys[k]=false; });
 
 function look(dx,dy){ player.yaw -= dx*0.0022; player.pitch = Math.max(-1.35, Math.min(1.35, player.pitch - dy*0.0022)); }
 document.addEventListener('mousemove', e => { if (locked||dragging) look(e.movementX||0, e.movementY||0); });
-canvas.addEventListener('mousedown', () => { if (!started||panelOpen) return; if (!locked){ tryLock(); dragging=true; } });
+canvas.addEventListener('mousedown', () => { if (!started) return; if (!locked){ tryLock(); dragging=true; } });
 addEventListener('mouseup', () => dragging=false);
 function tryLock(){ if (IS_TOUCH) return; try { const p=canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(()=>{}); } catch(_){} }
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement===canvas; if (!locked && started && !panelOpen) showPause(); });
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement===canvas; if (!locked && started) showPause(); });
 function showPause(){
   $('start').querySelector('h1').textContent='Paused'; $('start').querySelector('.byline').hidden=true;
   $('start').querySelector('p').textContent='The rainforest waits. Click to return to the trail.';
@@ -1304,11 +1281,6 @@ canvas.addEventListener('touchend', e => {
     if (t.identifier===lookT.id) lookT.id=null;
   }
 });
-
-$('prompt').addEventListener('click', () => nearWaystone && openPanel());
-function openPanel(){ panelOpen=true; $('panel').hidden=false; for (const k in keys) keys[k]=false; if (document.exitPointerLock) document.exitPointerLock(); $('closePanel').focus(); }
-$('closePanel').addEventListener('click', () => { panelOpen=false; $('panel').hidden=true; canvas.focus(); tryLock(); });
-$('wayForm').addEventListener('submit', e => e.preventDefault());
 
 /* ================= HUD ================= */
 const PX_PER_DEG=3.2, strip=$('strip');
@@ -1401,7 +1373,7 @@ function frame(){
   grassCam.value.set(player.x, player.z);
 
   if (!started) player.yaw += dt*0.07;   // slow 360° pan behind the title
-  if (started && !panelOpen){
+  if (started){
     if (keys.ArrowLeft) player.yaw += 1.9*dt;
     if (keys.ArrowRight) player.yaw -= 1.9*dt;
     let mf=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-stick.dy;
@@ -1429,8 +1401,6 @@ function frame(){
         toast(player.seeds===7?'All seven seeds gathered':'Spirit seed found');
       }
     }
-    const nearNow=Math.hypot(player.x-WAYSTONE.x,player.z-WAYSTONE.z)<7;
-    if (nearNow!==nearWaystone){ nearWaystone=nearNow; $('prompt').hidden=!nearNow; }
   }
 
   camera.position.set(player.x, player.y+Math.sin(player.bob)*0.035, player.z);

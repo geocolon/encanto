@@ -40,7 +40,7 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 - Animals: `SPECIES` table and `makeBird`, `trailFlight` flight plans, hummingbirds, morphos, toucans, capybaras.
 - Audio: `startAudio()` (cicadas, rain hiss, leaf patter, drips) and `call()` (bird calls).
 - Camera pipeline: god rays + lens flare (`raysPass`), bloom, film grade (`gradePass`).
-- Player, input (keyboard, mouse, touch joystick, Run/Jump buttons), HUD compass, Waystone panel.
+- Player, input (keyboard, mouse, touch joystick, Run/Jump buttons), HUD compass.
 
 ## Rules
 
