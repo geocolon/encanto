@@ -85,7 +85,7 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
 </head>
 <body>
 <div id="splash" role="dialog" aria-label="Encanto by Paloma: intro" aria-describedby="splashTag">
-  <video id="splashVideo" src="videos/intro.mp4#t=0.001" poster="videos/intro-poster.jpg" muted autoplay playsinline preload="auto" aria-hidden="true"></video>
+  <video id="splashVideo" src="videos/intro.mp4#t=0.001" poster="videos/intro-poster.jpg" muted playsinline preload="auto" aria-hidden="true"></video>
   <div id="splashTitle">
     <h1>Encanto</h1>
     <span class="byline">by Paloma</span>
@@ -94,15 +94,13 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
   <button class="btn" id="splashEnter" type="button">Enter</button>
 </div>
 <script>
-// Video splash: loop the first 0.5s until Enter, then play to the end and fade away.
-// Relies on the global [hidden]{display:none!important} rule.
+// Video splash: hold on the first frame (poster, then the buffered frame) until Enter,
+// then play once to the end and fade away. Relies on the global [hidden]{display:none!important} rule.
 (function(){
   const splash=document.getElementById('splash'), video=document.getElementById('splashVideo'), btn=document.getElementById('splashEnter'), title=document.getElementById('splashTitle');
-  const LOOP_END=0.5, FADE_LEAD=0.8;
-  let looping=true, entered=false, gone=false, safety=0, watchdog=0;
+  const FADE_LEAD=0.8;
+  let entered=false, gone=false, safety=0, watchdog=0;
 
-  function guard(){ if (looping && video.currentTime>=LOOP_END) video.currentTime=0; }
-  function tick(){ if (gone) return; guard(); nearEnd(); requestAnimationFrame(tick); }
   function nearEnd(){
     if (!entered || gone) return;
     const d=video.duration;
@@ -121,9 +119,11 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
   }
   function play(){ const p=video.play(); return p && p.then ? p : Promise.resolve(); }
   function enter(){
-    if (entered) return; entered=true; looping=false;
+    if (entered) return; entered=true;
     btn.classList.add('out'); title.classList.add('out'); setTimeout(() => { btn.hidden=true; title.hidden=true; }, 300);
     if (video.error || video.readyState===0 && video.networkState===3) { dismiss(); return; }
+    // the #t=0.001 hint parks it a hair past 0; only rewind if it somehow drifted further
+    if (video.currentTime>0.05) { try { video.currentTime=0; } catch(_){} }
     video.muted=false;
     play().catch(() => { video.muted=true; return play(); }).catch(dismiss);
     // safety: never trap the user behind a stalled video
@@ -131,7 +131,7 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
     safety=setTimeout(dismiss, Math.min(left*1000+3000, 30000));
   }
 
-  video.addEventListener('timeupdate', () => { guard(); nearEnd(); });
+  video.addEventListener('timeupdate', nearEnd);
   video.addEventListener('ended', dismiss);
   video.addEventListener('error', () => { if (entered) dismiss(); });
   video.addEventListener('waiting', () => { if (entered){ clearTimeout(watchdog); watchdog=setTimeout(dismiss, 5000); } });
@@ -140,14 +140,8 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
   splash.addEventListener('click', enter);
   // the game's global keydown blocks Space's default, so handle Enter/Space here
   splash.addEventListener('keydown', e => { if (e.key==='Enter' || e.key===' ' || e.code==='Space'){ e.preventDefault(); e.stopPropagation(); enter(); } });
-  // some browsers need the muted property (not just the attribute) to allow autoplay
+  // keep the muted property in sync with the attribute so the muted fallback on Enter is allowed
   video.muted=true; video.defaultMuted=true;
-  // retry autoplay once data arrives; if still blocked the poster stays visible and Enter still works
-  const retry=() => { if (!entered && video.paused) play().catch(() => {}); };
-  video.addEventListener('loadeddata', retry);
-  video.addEventListener('canplay', retry);
-  play().catch(() => {});
-  requestAnimationFrame(tick);
   try { btn.focus({preventScroll:true}); } catch(_){}
 })();
 </script>
