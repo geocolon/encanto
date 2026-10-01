@@ -69,10 +69,72 @@ body.touch .desk-only{display:none}
 .rotate{font-size:13px;color:var(--glow);display:none}
 @media (orientation:portrait){body.touch .rotate{display:block}}
 html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
-@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+/* Video splash: sits above #start (z 10) and the HUD (z 5) until the intro has played */
+#splash{position:fixed;inset:0;z-index:20;background:#050906;cursor:pointer;opacity:1;transition:opacity 1s ease}
+#splash.fade{opacity:0;pointer-events:none}
+#splash video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+#splashEnter{position:absolute;left:50%;bottom:calc(10vh + env(safe-area-inset-bottom,0px));transform:translateX(-50%);min-width:44px;min-height:44px;padding:14px 40px;font-size:17px;box-shadow:0 4px 24px rgba(0,0,0,.45);transition:opacity .25s ease}
+#splashEnter.out{opacity:0;pointer-events:none}
+@media (prefers-reduced-motion:reduce){#toast,#splash,#splashEnter{transition:none}}
 </style>
 </head>
 <body>
+<div id="splash" role="dialog" aria-label="Encanto intro">
+  <video id="splashVideo" src="videos/intro.mp4" muted autoplay playsinline preload="auto" aria-hidden="true"></video>
+  <button class="btn" id="splashEnter" type="button">Enter</button>
+</div>
+<script>
+// Video splash: loop the first 0.5s until Enter, then play to the end and fade away.
+// Relies on the global [hidden]{display:none!important} rule.
+(function(){
+  const splash=document.getElementById('splash'), video=document.getElementById('splashVideo'), btn=document.getElementById('splashEnter');
+  const LOOP_END=0.5, FADE_LEAD=0.8;
+  let looping=true, entered=false, gone=false, safety=0, watchdog=0;
+
+  function guard(){ if (looping && video.currentTime>=LOOP_END) video.currentTime=0; }
+  function tick(){ if (gone) return; guard(); nearEnd(); requestAnimationFrame(tick); }
+  function nearEnd(){
+    if (!entered || gone) return;
+    const d=video.duration;
+    if (isFinite(d) && d>0 && video.currentTime>=d-FADE_LEAD) dismiss();
+  }
+  function dismiss(){
+    if (gone) return; gone=true;
+    clearTimeout(safety); clearTimeout(watchdog);
+    splash.classList.add('fade');
+    setTimeout(() => {
+      splash.hidden=true;
+      try { video.pause(); video.removeAttribute('src'); video.load(); } catch(_){}
+      splash.remove();
+      const enter=document.getElementById('enter'); if (enter && !enter.hidden) enter.focus();
+    }, 1050);
+  }
+  function play(){ const p=video.play(); return p && p.then ? p : Promise.resolve(); }
+  function enter(){
+    if (entered) return; entered=true; looping=false;
+    btn.classList.add('out'); setTimeout(() => { btn.hidden=true; }, 250);
+    if (video.error || video.readyState===0 && video.networkState===3) { dismiss(); return; }
+    video.muted=false;
+    play().catch(() => { video.muted=true; return play(); }).catch(dismiss);
+    // safety: never trap the user behind a stalled video
+    const d=video.duration, left=isFinite(d) && d>0 ? Math.max(0,d-video.currentTime) : 8;
+    safety=setTimeout(dismiss, Math.min(left*1000+3000, 30000));
+  }
+
+  video.addEventListener('timeupdate', () => { guard(); nearEnd(); });
+  video.addEventListener('ended', dismiss);
+  video.addEventListener('error', () => { if (entered) dismiss(); });
+  video.addEventListener('waiting', () => { if (entered){ clearTimeout(watchdog); watchdog=setTimeout(dismiss, 5000); } });
+  video.addEventListener('playing', () => clearTimeout(watchdog));
+  btn.addEventListener('click', e => { e.stopPropagation(); enter(); });
+  splash.addEventListener('click', enter);
+  // the game's global keydown blocks Space's default, so handle Enter/Space here
+  splash.addEventListener('keydown', e => { if (e.key==='Enter' || e.key===' ' || e.code==='Space'){ e.preventDefault(); e.stopPropagation(); enter(); } });
+  play().catch(() => {});  // autoplay may be blocked; Enter still works
+  requestAnimationFrame(tick);
+  try { btn.focus({preventScroll:true}); } catch(_){}
+})();
+</script>
 <div id="world"></div>
 
 <div class="hud" id="compass"><div id="strip"></div></div>
