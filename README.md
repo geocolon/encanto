@@ -1,3 +1,5 @@
+<img width="100%" alt="Encanto by Paloma" src="https://github.com/user-attachments/assets/76b04aa4-cfeb-4c74-b271-79e2ba564adb" />
+
 # Encanto by Paloma
 
 Walk through a crowded Amazon rainforest valley in a gentle sun shower, right in your browser.
