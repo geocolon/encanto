@@ -81,9 +81,45 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
 #splashTitle .byline{margin-top:-2px}
 #splashTitle p{margin:0;font-size:clamp(15px,2.2vw,19px);line-height:1.5;color:var(--ink);letter-spacing:.02em;text-wrap:balance}
 @media (prefers-reduced-motion:reduce){#toast,#splash,#splashEnter,#splashTitle{transition:none}}
+/* Site details menu: skip link, HUD Details button, Waystone prompt, dialog */
+.vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+#skipLink{position:fixed;left:12px;top:calc(12px + env(safe-area-inset-top,0px));z-index:30;transform:translateY(-200%);background:var(--ink);color:#1a241c;font:600 15px var(--body);padding:12px 18px;border-radius:8px;text-decoration:none;min-height:44px;box-sizing:border-box;display:flex;align-items:center}
+#skipLink:focus{transform:none}
+#skipLink:focus-visible,#detailsBtn:focus-visible,#wayPrompt:focus-visible{outline:3px solid var(--glow);outline-offset:2px;box-shadow:0 0 0 6px #000}
+#soundBtn,#detailsBtn{min-height:44px;left:calc(16px + env(safe-area-inset-left,0px))}
+#detailsBtn{top:calc(64px + env(safe-area-inset-top,0px));pointer-events:auto;cursor:pointer;font:600 12px var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:rgba(0,0,0,.3);border:1px solid var(--panel-edge);border-radius:999px;padding:7px 14px}
+#wayPrompt{left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));pointer-events:auto;cursor:pointer;min-height:44px;font:600 15px var(--body);letter-spacing:.06em;color:var(--ink);background:rgba(5,9,6,.72);border:1px solid var(--glow);border-radius:999px;padding:10px 20px;max-width:calc(100vw - 32px)}
+body.touch #wayPrompt{bottom:calc(156px + env(safe-area-inset-bottom,0px))}
+body.touch #wayPrompt .touch-only{display:inline}
+#wayPrompt kbd{font:700 14px var(--body);border:1px solid var(--ink);border-radius:4px;padding:0 6px}
+.linkbtn{justify-self:center;min-height:44px;min-width:44px;padding:8px 14px;background:none;border:0;color:var(--ink);font:600 15px var(--body);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.linkbtn:focus-visible{outline:3px solid var(--glow);outline-offset:2px}
+#details{z-index:15;padding:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px));background:rgba(5,9,6,.78)}
+.details-card{width:min(560px,100%);box-sizing:border-box;max-height:calc(100vh - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+  text-align:left;gap:12px;background:#101a13;border:1px solid var(--panel-edge);border-radius:16px;padding:0 22px 22px;box-shadow:0 10px 40px rgba(0,0,0,.6);animation:dIn .25s ease}
+@keyframes dIn{from{opacity:0;transform:translateY(8px)}}
+.dhead{position:sticky;top:0;z-index:1;display:flex;justify-content:flex-end;margin:0 -22px;padding:10px 12px 4px;background:#101a13}
+.details-card h2{font-family:var(--display);font-weight:700;font-size:clamp(28px,6vw,40px);letter-spacing:.04em;line-height:1.1;margin:0;color:var(--ink)}
+.details-card h2:focus{outline:none}
+.details-card h3{font-family:var(--display);font-weight:600;font-size:21px;letter-spacing:.04em;margin:14px 0 4px;color:var(--ink)}
+.details-card p,.details-card li{color:var(--ink-dim);font-size:16px;line-height:1.6;margin:0}
+.details-card ul{margin:6px 0 0;padding-left:1.2em}
+.details-card ul:not(.keys){display:grid;gap:6px}
+.details-card ul.keys{flex-direction:column;align-items:flex-start;gap:6px;font-size:15px}
+.details-card .lede{color:var(--ink);font-size:17px}
+.details-card a{color:var(--glow);text-underline-offset:3px}
+.details-card a:focus-visible,.dbtn:focus-visible,.details-card .btn:focus-visible{outline:3px solid var(--glow);outline-offset:3px}
+.eyebrow{font-family:var(--display);font-size:15px;letter-spacing:.24em;text-transform:uppercase;color:var(--glow)!important;margin:0 0 -6px!important}
+.dbtn{min-height:44px;min-width:44px;padding:8px 18px;margin-top:8px;font:600 14px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:rgba(243,236,214,.08);border:1px solid rgba(243,236,214,.6);border-radius:999px;cursor:pointer}
+.dclose{margin:0}
+.soon{justify-self:start;width:max-content;font:700 12px var(--body)!important;letter-spacing:.14em;text-transform:uppercase;color:var(--glow)!important;border:1px solid var(--glow);border-radius:999px;padding:3px 10px;margin-top:6px!important}
+.durl{word-break:break-all;color:var(--ink)!important}
+.details-card .btn{margin-top:14px;min-height:44px}
+@media (prefers-reduced-motion:reduce){.details-card{animation:none}}
 </style>
 </head>
 <body>
+<a id="skipLink" href="#details">Skip to site details</a>
 <div id="splash" role="dialog" aria-label="Encanto by Paloma: intro" aria-describedby="splashTag">
   <video id="splashVideo" src="videos/intro.mp4#t=0.001" poster="videos/intro-poster.jpg" muted playsinline preload="auto" aria-hidden="true"></video>
   <div id="splashTitle">
@@ -142,6 +178,9 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
   splash.addEventListener('keydown', e => { if (e.key==='Enter' || e.key===' ' || e.code==='Space'){ e.preventDefault(); e.stopPropagation(); enter(); } });
   // keep the muted property in sync with the attribute so the muted fallback on Enter is allowed
   video.muted=true; video.defaultMuted=true;
+  // skip link: drop the splash at once (no fade) so the details menu can take focus
+  window.encantoSkipSplash = () => { if (gone) return; entered=gone=true; clearTimeout(safety); clearTimeout(watchdog);
+    try { video.pause(); video.removeAttribute('src'); video.load(); } catch(_){} splash.remove(); };
   try { btn.focus({preventScroll:true}); } catch(_){}
 })();
 </script>
@@ -149,6 +188,9 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
 
 <div class="hud" id="compass"><div id="strip"></div></div>
 <button class="hud" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+<button class="hud" id="detailsBtn" type="button">Details</button>
+<button class="hud" id="wayPrompt" type="button" hidden><span class="desk-only">Press <kbd>E</kbd> to read the Waystone</span><span class="touch-only">Tap to read the Waystone</span></button>
+<div id="live" class="vh" aria-live="polite"></div>
 <div class="hud" id="seeds"><i></i><span id="seedCount">0 / 7</span></div>
 <div class="hud" id="reticle"></div>
 <div class="hud" id="hint">
@@ -179,8 +221,140 @@ html,body{touch-action:none;overscroll-behavior:none;-webkit-tap-highlight-color
     </div>
     <span id="loading">Growing the forest…</span>
     <button class="btn" id="enter" hidden>Enter the rainforest</button>
+    <button class="linkbtn" id="startDetails" type="button">Site details</button>
   </div>
 </div>
+
+<div id="details" class="overlay" hidden>
+  <div class="card details-card" role="dialog" aria-modal="true" aria-labelledby="detailsTitle">
+    <div class="dhead"><button type="button" class="dbtn dclose" id="detailsClose" aria-label="Close details">Close</button></div>
+    <p class="eyebrow" id="detailsEyebrow" hidden>You found the Waystone</p>
+    <h2 id="detailsTitle" tabindex="-1">Encanto by Paloma</h2>
+    <p class="lede">A hidden rainforest valley you can walk through, right in your browser. No download, no sign-up, just step in and listen.</p>
+    <section>
+      <h3>About the experience</h3>
+      <p>Encanto is an interactive 3D rainforest built entirely in code. Every giant tree, orchid, macaw and drop of rain is generated as you arrive, so the valley is made fresh for each visit. It's a place to slow down, wander the red clay trail and let the sound of the forest do the rest.</p>
+    </section>
+    <section>
+      <h3>Your journey</h3>
+      <p id="journeyText">You've gathered 0 of 7 spirit seeds. Follow the trail and look for the glowing green lights.</p>
+      <ul class="keys desk-only" aria-label="Keyboard and mouse controls">
+        <li><kbd>Mouse</kbd> or <kbd>←</kbd> <kbd>→</kbd> look and turn</li>
+        <li><kbd>WASD</kbd> or <kbd>↑</kbd> <kbd>↓</kbd> move</li>
+        <li><kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump · <kbd>Esc</kbd> pause</li>
+      </ul>
+      <ul class="keys touch-only" aria-label="Touch controls">
+        <li>Left thumb: walk</li><li>Right thumb: drag to look</li>
+        <li><kbd>Run</kbd> toggles sprint · <kbd>Jump</kbd> to hop</li>
+      </ul>
+    </section>
+    <section>
+      <h3>Accessibility</h3>
+      <p>We want everyone to be able to enjoy the valley.</p>
+      <ul>
+        <li>Keyboard: you can explore with the keyboard alone, and every menu works with Tab, Enter and Esc.</li>
+        <li>Sound: forest audio can be switched off at any time with the Sound button.<br><button type="button" class="dbtn" id="menuSound" aria-pressed="true">Sound on</button></li>
+        <li>Motion: if your device is set to reduce motion, we turn off fades and transitions.</li>
+        <li>This page: all site information lives here as plain text, so it works with screen readers.</li>
+        <li>Feedback: found something hard to use? <a href="https://github.com/geocolon/encanto/issues" target="_blank" rel="noopener">Tell us on GitHub<span class="vh"> (opens in a new tab)</span></a>.</li>
+      </ul>
+    </section>
+    <section>
+      <h3>Share the valley</h3>
+      <p>Know someone who needs a few quiet minutes in the rainforest? Send them here.</p>
+      <p class="durl">https://geocolon.github.io/encanto/</p>
+      <button type="button" class="dbtn" id="shareBtn">Share Encanto</button>
+      <p id="shareMsg" aria-live="polite"></p>
+    </section>
+    <section id="connect" hidden>
+      <h3>Connect with Paloma</h3>
+      <p>Follow along for new corners of the valley, or say hello.</p>
+      <p class="soon" id="connectSoon" hidden>Coming soon</p>
+      <ul id="connectList"></ul>
+    </section>
+    <section>
+      <h3>Credits</h3>
+      <p>Created by Paloma. Built with three.js and made with help from Claude Code. <a href="https://github.com/geocolon/encanto" target="_blank" rel="noopener">Source on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>
+    </section>
+    <button class="btn" id="detailsReturn" type="button">Return to the forest</button>
+  </div>
+</div>
+<script>
+// Site details menu. Lives outside the game script so the skip link works even before three.js loads.
+// The game plugs in via Encanto.hooks (onOpen, onClose, seeds, toast).
+(function(){
+  const CONTACT_LIVE = false;   // accounts not live yet: plain text + "Coming soon". Set true to render real links.
+  const CONTACT = { email:'mail@encantobypaloma.com', instagram:'encantobypaloma', tiktok:'encantobypaloma', website:'' }; // empty entries are not shown
+  const SITE = 'https://geocolon.github.io/encanto/';
+  const $ = id => document.getElementById(id);
+  const dlg=$('details'), card=dlg.firstElementChild, hooks={};
+  let isOpen=false, returnTo=null, inerted=[];
+
+  // Connect section: only non-empty entries, hidden entirely if none
+  { const ul=$('connectList'), ext=' <span class="vh">(opens in a new tab)</span>';
+    const add=html=>{ const li=document.createElement('li'); li.innerHTML=html; ul.appendChild(li); };
+    const esc=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const h=v=>esc(String(v).replace(/^@/,'')), L=CONTACT_LIVE;
+    const link=(url,text)=>`<a href="${esc(url)}" target="_blank" rel="noopener">${text}${ext}</a>`;
+    if (CONTACT.email) add(`Email: ${L ? `<a href="mailto:${esc(CONTACT.email)}">${esc(CONTACT.email)}</a>` : esc(CONTACT.email)}`);
+    if (CONTACT.instagram) add(L ? link(`https://www.instagram.com/${h(CONTACT.instagram)}/`, `@${h(CONTACT.instagram)} on Instagram`) : `Instagram: @${h(CONTACT.instagram)}`);
+    if (CONTACT.tiktok) add(L ? link(`https://www.tiktok.com/@${h(CONTACT.tiktok)}`, `@${h(CONTACT.tiktok)} on TikTok`) : `TikTok: @${h(CONTACT.tiktok)}`);
+    if (CONTACT.website) add(L ? link(CONTACT.website, "Paloma's website") : `Website: ${esc(CONTACT.website)}`);
+    $('connectSoon').hidden = L;
+    $('connect').hidden = !ul.children.length; }
+
+  function focusables(){ return [...card.querySelectorAll('button,a[href]')].filter(el => !el.closest('[hidden]') && el.getClientRects().length); }
+  function open(ctx, from){
+    if (isOpen) return;
+    if (window.encantoSkipSplash) window.encantoSkipSplash();
+    isOpen=true; returnTo=from || document.activeElement;
+    $('detailsEyebrow').hidden = ctx!=='waystone';
+    const n = hooks.seeds ? hooks.seeds() : 0;
+    $('journeyText').textContent = n>=7 ? "You've gathered all seven spirit seeds. The valley thanks you."
+      : `You've gathered ${n} of 7 spirit seeds. Follow the trail and look for the glowing green lights.`;
+    $('shareMsg').textContent='';
+    hooks.onOpen && hooks.onOpen(ctx);
+    inerted=[...document.body.children].filter(el => el!==dlg && el.tagName!=='SCRIPT' && !el.inert);
+    inerted.forEach(el => el.inert=true);
+    dlg.hidden=false; card.scrollTop=0;
+    $('detailsTitle').focus();
+  }
+  // byPointer: closed with a mouse/touch click (vs keyboard), so the game may take focus back
+  function close(byPointer){
+    if (!isOpen) return;
+    isOpen=false; dlg.hidden=true;
+    inerted.forEach(el => el.inert=false); inerted=[];
+    const took = hooks.onClose ? hooks.onClose(byPointer) : false;
+    if (!took && returnTo && returnTo.isConnected && returnTo.getClientRects().length) try { returnTo.focus(); } catch(_){}
+    else if (!took){ const c=document.querySelector('#world canvas'); c && c.focus(); }
+    returnTo=null;
+  }
+  dlg.addEventListener('keydown', e => {
+    e.stopPropagation();   // keep game keys (Space, arrows, E) out while the menu is open
+    if (e.key==='Escape'){ e.preventDefault(); close(false); return; }
+    if (e.key==='Tab'){ const f=focusables(); if (!f.length) return;
+      const first=f[0], last=f[f.length-1], a=document.activeElement;
+      if (e.shiftKey && (a===first || a===$('detailsTitle') || !card.contains(a))){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (a===last || !card.contains(a))){ e.preventDefault(); first.focus(); } }
+  });
+  dlg.addEventListener('keyup', e => e.stopPropagation());
+  dlg.addEventListener('click', e => { if (e.target===dlg) close(true); });   // backdrop
+  $('detailsClose').addEventListener('click', e => close(e.detail>0));
+  $('detailsReturn').addEventListener('click', e => close(e.detail>0));
+  const say = m => { $('shareMsg').textContent=''; setTimeout(() => { $('shareMsg').textContent=m; }, 50); hooks.toast && hooks.toast(m); };
+  $('shareBtn').addEventListener('click', () => {
+    const data={title:'Encanto by Paloma', text:'Take a walk through a hidden rainforest valley, right in your browser.', url:SITE};
+    try {
+      if (navigator.share) navigator.share(data).catch(()=>{});
+      else if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(SITE).then(() => say('Link copied'), ()=>{});
+    } catch(_){}
+  });
+  $('skipLink').addEventListener('click', e => { e.preventDefault(); open('details', $('start').hidden ? $('detailsBtn') : $('startDetails')); });
+  $('startDetails').addEventListener('click', e => open('details', e.currentTarget));
+  $('detailsBtn').addEventListener('click', e => open('details', e.currentTarget));
+  window.Encanto = { open, close, isOpen: () => isOpen, hooks };
+})();
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
@@ -1290,13 +1464,13 @@ function call(){
       o.connect(g).connect(dest); o.start(st); o.stop(st+0.15); }
   }
 }
-$('soundBtn').addEventListener('click', () => {
+function toggleSound(){
   soundOn = !soundOn;
-  $('soundBtn').textContent = soundOn ? 'Sound on' : 'Sound off';
-  $('soundBtn').setAttribute('aria-pressed', soundOn);
+  for (const b of [$('soundBtn'),$('menuSound')]){ b.textContent = soundOn ? 'Sound on' : 'Sound off'; b.setAttribute('aria-pressed', soundOn); }
   if (soundOn) startAudio(); else if (audio) audio.ctx.suspend();
-  canvas.focus();
-});
+}
+$('soundBtn').addEventListener('click', () => { toggleSound(); canvas.focus(); });
+$('menuSound').addEventListener('click', toggleSound);
 
 /* ================= Player & input ================= */
 // Eye height kept low so ferns and monstera sit at eye level, like crouching on the trail
@@ -1306,7 +1480,14 @@ player.y = height(player.x,player.z)+EYE;
 const keys = {};
 let started=false, locked=false, dragging=false, sprintOn=false;
 
+const menu = window.Encanto || {isOpen:()=>false, open(){}, hooks:{}};
+let wayNear=false, wayRead=false, wayFlash=0;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
 addEventListener('keydown', e => {
+  if (menu.isOpen()) return;
+  // let Space/Enter activate focused buttons and links instead of jumping
+  if ((e.code==='Space'||e.key==='Enter') && e.target.closest && e.target.closest('button,a,input,textarea,select')) return;
+  if (e.code==='KeyE' && !e.repeat && wayNear && $('start').hidden && !(e.target.closest && e.target.closest('input,textarea,select,[contenteditable]'))){ e.preventDefault(); menu.open('waystone', canvas); return; }
   keys[e.code]=true;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
 });
@@ -1318,7 +1499,7 @@ document.addEventListener('mousemove', e => { if (locked||dragging) look(e.movem
 canvas.addEventListener('mousedown', () => { if (!started) return; if (!locked){ tryLock(); dragging=true; } });
 addEventListener('mouseup', () => dragging=false);
 function tryLock(){ if (IS_TOUCH) return; try { const p=canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(()=>{}); } catch(_){} }
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement===canvas; if (!locked && started) showPause(); });
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement===canvas; if (!locked && started && !menu.isOpen()) showPause(); });
 function showPause(){
   $('start').querySelector('h1').textContent='Paused'; $('start').querySelector('.byline').hidden=true;
   $('start').querySelector('p').textContent='The rainforest waits. Click to return to the trail.';
@@ -1327,6 +1508,22 @@ function showPause(){
 $('enter').addEventListener('click', () => { $('start').hidden=true; started=true; canvas.focus(); tryLock(); if (soundOn) startAudio(); });
 
 const stick={id:null,sx:0,sy:0,dx:0,dy:0}, lookT={id:null,x:0,y:0};
+// Site details menu hooks: freeze input while open, hand control back on close
+menu.hooks.seeds = () => player.seeds;
+menu.hooks.toast = m => toast(m);
+menu.hooks.onOpen = ctx => {
+  for (const k in keys) keys[k]=false;
+  stick.id=null; stick.dx=stick.dy=0; lookT.id=null; dragging=false; $('stick').firstElementChild.style.transform='';
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (ctx==='waystone' && !wayRead){ wayRead=true; wayFlash=1; }
+};
+menu.hooks.onClose = byPointer => {
+  if (!started || !$('start').hidden) return false;   // title or pause card: focus goes back to its opener
+  tryLock();
+  if (byPointer || IS_TOUCH){ canvas.focus(); return true; }
+  return false;
+};
+$('wayPrompt').addEventListener('click', () => menu.open('waystone', canvas));
 addEventListener('touchstart', () => document.body.classList.add('touch'), {once:true, passive:true});
 const btnJump=$('btnJump'), btnSprint=$('btnSprint');
 btnJump.addEventListener('pointerdown', e => { e.preventDefault(); keys.Space=true; });
@@ -1450,6 +1647,7 @@ function frame(){
     if (keys.ArrowRight) player.yaw -= 1.9*dt;
     let mf=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-stick.dy;
     let ms=(keys.KeyD?1:0)-(keys.KeyA?1:0)+stick.dx;
+    if (menu.isOpen()) mf=ms=0;   // no movement input behind the details menu
     const len=Math.hypot(mf,ms); if (len>1){ mf/=len; ms/=len; }
     const speed=(keys.ShiftLeft||keys.ShiftRight||sprintOn)?11:5.5;
     fwd.set(-Math.sin(player.yaw),0,-Math.cos(player.yaw)); right.set(Math.cos(player.yaw),0,-Math.sin(player.yaw));
@@ -1474,6 +1672,12 @@ function frame(){
       }
     }
   }
+  // Waystone prompt: shown in range, announced once per approach
+  const inRange = started && Math.hypot(WAYSTONE.x-player.x, WAYSTONE.z-player.z) < 8;
+  if (inRange !== wayNear){ wayNear=inRange;
+    $('live').textContent = inRange ? (document.body.classList.contains('touch') ? 'Tap to read the Waystone' : 'Press E to read the Waystone') : ''; }
+  const showPrompt = wayNear && !menu.isOpen() && $('start').hidden;
+  if ($('wayPrompt').hidden === showPrompt) $('wayPrompt').hidden = !showPrompt;
 
   camera.position.set(player.x, player.y+Math.sin(player.bob)*0.035, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
@@ -1491,7 +1695,10 @@ function frame(){
   }
   way.getObjectByName('ring').rotation.z=t*0.4;
   way.getObjectByName('ring').position.y=4.3+Math.sin(t*1.2)*0.3;
-  way.getObjectByName('light').intensity=2+Math.sin(t*2)*0.4;
+  // after the first reading the Waystone stays awake (brighter); a brief flash unless reduced motion
+  wayFlash = REDUCED.matches ? 0 : Math.max(0, wayFlash-dt*0.8);
+  way.getObjectByName('light').intensity=2+Math.sin(t*2)*0.4+(wayRead?1.2:0)+wayFlash*6;
+  way.getObjectByName('ring').scale.setScalar(1+wayFlash*0.35);
   for (const r of rays) r.material.opacity = 0.035 + Math.sin(t*0.4+r.userData.ph)*0.015;
   for (const s of seeds){ if (!s.userData.got){ s.position.y=s.userData.baseY+Math.sin(t*2+s.userData.phase)*0.22; } }
   const mp=moteGeo.attributes.position.array;
