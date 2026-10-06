@@ -375,6 +375,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -390,13 +391,13 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, aa:false, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  aa:true,  grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
 const LOW_END = !IS_TOUCH && (QUALITY==='low' || (QUALITY!=='high' && ((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4)));
-if (LOW_END) Object.assign(Q, {dpr:1, shadow:1024, shadowBox:30, ao:false});
+if (LOW_END) Object.assign(Q, {dpr:1, shadow:1024, shadowBox:30, ao:false, msaa:0});
 
 /* ================= World shape ================= */
 // A long, nearly straight trail so it recedes to a vanishing point in the haze
@@ -425,7 +426,10 @@ const clear = (x,z,pad=0) =>
   Math.hypot(x-pathX(150), z-150) > 8;
 
 /* ================= Renderer ================= */
-const renderer = new THREE.WebGLRenderer({antialias:Q.aa, powerPreference:'high-performance'});
+// No antialias on the canvas: the scene is drawn into the composer's target, and the canvas only ever receives the
+// final full-screen OutputPass quad. Anti-aliasing comes from MSAA on the composer target (Q.msaa, see Camera pipeline).
+const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'high-performance'});
+const A2C = Q.msaa > 0;   // alpha-to-coverage on the alpha-cut leaves: soft, stable leaf edges instead of a shimmering 0/1 cut
 renderer.setPixelRatio(Math.min(devicePixelRatio,Q.dpr));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -1266,7 +1270,7 @@ function cutoutDepth(alphaMap){
   d.onBeforeCompile = atlasVertex; d.customProgramCacheKey = () => 'depth-atlas'; return d;
 }
 // Leaves: double-sided, alpha-tested (no sorting), slightly glossy like a waxy tropical leaf, glowing when backlit
-const foliageMat = (D, A, rough, env) => new THREE.MeshStandardMaterial({map:D, alphaMap:A, alphaTest:0.5, side:THREE.DoubleSide, roughness:rough, envMapIntensity:env});
+const foliageMat = (D, A, rough, env) => new THREE.MeshStandardMaterial({map:D, alphaMap:A, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:rough, envMapIntensity:env});
 instanced(trunkGeo, trunkMat, T.trunk.filter(t=>!t.kind), {cast:true, receive:true});
 instanced(trunkGeo, palmMat, T.trunk.filter(t=>t.kind==='palm'), {cast:true, receive:true});
 instanced(trunkGeo, mossMat, T.trunk.filter(t=>t.kind==='fern'), {cast:true, receive:true});
@@ -1288,7 +1292,7 @@ const monLeaves = instanced(monsteraGeo, monMat, T.monstera, {cast:Q.frondShadow
 instanced(new THREE.CylinderGeometry(1,1.3,1,5).translate(0,0.5,0), new THREE.MeshStandardMaterial({color:'#4d6a32', roughness:.6}), T.stem, {receive:true});
 for (const ty of FLOWER_TYPES){
   // orchids and ground flowers: no self-glow, slightly muted, so they read as real petals in shade
-  const mat=new THREE.MeshStandardMaterial({map:ty.tex, alphaTest:0.5, side:THREE.DoubleSide, roughness:0.5, color:'#d9d2cc', envMapIntensity:0.6});
+  const mat=new THREE.MeshStandardMaterial({map:ty.tex, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.5, color:'#d9d2cc', envMapIntensity:0.6});
   instanced(cardGeo, mat, ty.list, {receive:true});
 }
 const curtainGeo = new THREE.PlaneGeometry(1,1); curtainGeo.translate(0,-0.5,0);
@@ -1341,7 +1345,7 @@ function grassLayer(N, H, inner, sMul, oldBlades){
   const A=(n,arr)=>geo.setAttribute(n,new THREE.InstancedBufferAttribute(arr,arr.length/N));
   A('aOffset',off); A('aRot',rot); A('aSize',size); A('aShape',shape); A('aTint',tint); A('aCell',cell);
   geo.instanceCount=N;
-  const mat=new THREE.MeshLambertMaterial({map:FOLIAGE.leafD, alphaMap:FOLIAGE.leafA, alphaTest:0.5, side:THREE.DoubleSide});
+  const mat=new THREE.MeshLambertMaterial({map:FOLIAGE.leafD, alphaMap:FOLIAGE.leafA, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide});
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, {uTime:windTime, uCam:grassCam, uHalf:{value:H}, uInner:{value:inner}, uWater:{value:WATER_Y}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)},
       uSunView:sunView, uSunCol:{value:SUN_COL}});
@@ -1682,7 +1686,7 @@ for(let i=0;i<nb(8);i++){
 }
 
 // Blue morpho butterflies
-const morphoMat = new THREE.MeshStandardMaterial({map:morphoTex, alphaTest:.5, side:THREE.DoubleSide, roughness:.3, metalness:.35, emissive:'#0b2f80', emissiveMap:morphoTex, emissiveIntensity:.5});
+const morphoMat = new THREE.MeshStandardMaterial({map:morphoTex, alphaTest:.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:.3, metalness:.35, emissive:'#0b2f80', emissiveMap:morphoTex, emissiveIntensity:.5});
 const wingGeo = new THREE.PlaneGeometry(1,1); wingGeo.translate(.5,0,0); wingGeo.rotateX(-Math.PI/2);
 const morphos=[];
 for(let i=0;i<(IS_TOUCH?8:16);i++){
@@ -1913,23 +1917,39 @@ const seen = new Set();
 function spot(kind, obj, msg){ if (seen.has(kind)) return; if (obj.position.distanceTo(camera.position) < 16){ seen.add(kind); toast(msg); } }
 
 /* ================= Camera pipeline: scene → ambient occlusion → god rays → bloom → lens → OutputPass ================= */
-let composer=null, raysPass=null, gradePass=null, aoPass=null;
+let composer=null, raysPass=null, gradePass=null, aoPass=null, msRT=null;
 {
-  const pr=renderer.getPixelRatio();
+  const pr=renderer.getPixelRatio(), W=innerWidth*pr, H=innerHeight*pr;
   // Linear HDR target with a depth texture, so the AO pass can read the depth of the real render
   // (alpha-cut leaves and the GPU grass included) instead of drawing the whole forest a second time.
-  const rt=new THREE.WebGLRenderTarget(innerWidth*pr, innerHeight*pr, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
-    depthTexture: Q.ao ? new THREE.DepthTexture(innerWidth*pr, innerHeight*pr) : null});
+  const rt=new THREE.WebGLRenderTarget(W, H, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
+    depthTexture: Q.ao && !Q.msaa ? new THREE.DepthTexture(W, H) : null});
   composer=new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
+  // MSAA (Q.msaa samples) only for the scene itself: it renders into msRT, which resolves colour and depth once, and is
+  // copied into the composer. The canvas' own antialias never touched the scene, and making the composer targets
+  // multisampled resolved every post pass (about +30% frame time on an Intel iGPU). With alphaToCoverage (A2C) the
+  // leaf cut-outs are anti-aliased too. GTAO reads msRT's resolved depth.
+  if (Q.msaa){
+    msRT = new THREE.WebGLRenderTarget(W, H, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
+      samples:Q.msaa, depthTexture: Q.ao ? new THREE.DepthTexture(W, H) : null});
+    class MSRenderPass extends RenderPass {
+      constructor(){ super(scene, camera);
+        this.copy = new FullScreenQuad(new THREE.ShaderMaterial({uniforms:{tSrc:{value:msRT.texture}}, depthTest:false, depthWrite:false,
+          vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+          fragmentShader:`uniform sampler2D tSrc; varying vec2 vUv; void main(){ gl_FragColor=texture2D(tSrc,vUv); }`})); }
+      render(r, write, read, dt, mask){ super.render(r, write, msRT, dt, mask); r.setRenderTarget(read); this.copy.render(r); }
+    }
+    composer.addPass(new MSRenderPass());
+  } else composer.addPass(new RenderPass(scene, camera));
+  const sceneDepth = read => msRT ? msRT.depthTexture : read.depthTexture;
   if (Q.ao){
     // GTAO on the main depth buffer; normals are rebuilt from depth. Each frame it reads whichever buffer the scene went into.
     class SceneDepthGTAO extends GTAOPass {
-      render(r, write, read, dt, mask){ const d=read.depthTexture;
+      render(r, write, read, dt, mask){ const d=sceneDepth(read);
         this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; super.render(r, write, read, dt, mask); }
     }
-    aoPass = new SceneDepthGTAO(scene, camera, innerWidth*pr, innerHeight*pr);
-    aoPass.setGBuffer(rt.depthTexture);   // no separate normal/depth render
+    aoPass = new SceneDepthGTAO(scene, camera, W, H);
+    aoPass.setGBuffer(sceneDepth(rt));   // no separate normal/depth render
     aoPass.updateGtaoMaterial({radius:1.8, distanceExponent:1.5, thickness:1.5, scale:1.0, samples:12});
     aoPass.updatePdMaterial({lumaPhi:10, depthPhi:2, normalPhi:3, radius:6, rings:2, samples:12});
     aoPass.blendIntensity = 0.95;
@@ -2153,7 +2173,7 @@ function frame(ts){
 }
 addEventListener('resize', () => {
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);
-  if (composer){ composer.setSize(innerWidth,innerHeight); gradePass.uniforms.uRes.value.set(innerWidth,innerHeight); }
+  if (composer){ composer.setSize(innerWidth,innerHeight); if (msRT) msRT.setSize(innerWidth*renderer.getPixelRatio(), innerHeight*renderer.getPixelRatio()); gradePass.uniforms.uRes.value.set(innerWidth,innerHeight); }
 });
 
 /* ================= Start-up: wait for the forest to be built AND every asset to arrive ================= */
