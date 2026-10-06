@@ -35,7 +35,4 @@ Goal: photorealism. It should feel like standing in a real Amazon rainforest, no
 - Tooling to add: `scripts/shots.sh` (Playwright + `?debug` fixed camera spots → PNGs) to compare before/after each change; log FPS and draw calls per tier.
 
 ## Open housekeeping
-- Stage 2 assets aren't credited yet (details-menu Credits at index.html ~L284 and README L60). The project rules require credits.
-- README says assets are "about 8 MB"; they're now 11 MB.
-- `.claude/agents/encanto-builder.md` map is stale: "Procedural textures" lists bark, leaves, fronds, litter, monstera and curtains, which are now Poly Haven or atlas based.
 - Budgets: `assets/` 11 MB (2026-10-06). Keep an eye on the phone frame rate after S2. It hasn't been checked on a device.

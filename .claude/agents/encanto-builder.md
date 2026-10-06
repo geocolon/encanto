@@ -33,7 +33,8 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 - Import map and module imports at the top of the game script (three 0.186.1 and `three/addons/`). The splash and details-menu scripts are classic scripts so they work even if the CDN fails.
 - Asset loading: `THREE.LoadingManager` drives the "Loading the forest…" progress on the start card; Enter appears only once assets have loaded and shaders have compiled.
 - Quality tiers: phone / low-end / desktop detection, overridable with `?quality=high` or `?quality=low`.
-- Procedural textures: `makeTex(...)` calls for leaf litter, grass, bark, stone, leaves, fronds, monstera, vine curtains, flowers, morpho wings.
+- Procedural textures: `makeTex(...)` only for stone (`stoneTex`), flowers, morpho wings (`morphoTex`), `dotTex`, `rayTex`. Retired canvases (leaf litter, bark, leaves, fronds, big leaf, monstera, vine curtains) are `burnTex(...)` no-ops kept for the seeded `rand()` order.
+- Scanned materials: `barkMaterial(set, opts)` with `BARK` sets (Poly Haven bark, moss, palm PBR); foliage from `FOLIAGE` atlases + `LEAF_CELLS`/`CARD_CELLS` (built by `scripts/build-foliage.py`), picked per instance via `aCell`.
 - Sky and light: `SUN_DIR`, HDRI environment (PMREM) and HDRI sky, `sun` (directional light, shadow box that follows the player), hemisphere light. Light intensities are in physical units.
 - Forest floor: Poly Haven PBR ground textures blended by noise, wetter near the pond.
 - `addWind(mat, mode, strength, glow)`: shared wind and backlit-leaf shader.
@@ -50,7 +51,7 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 
 - Code lives in `index.html`; binary assets live in `assets/`. three.js is **0.186.1**, loaded as ES modules through the import map from cdn.jsdelivr.net; add-ons come from `three/addons/` at the same pinned version. Never mix versions or go back to r128 / `examples/js` globals. Use current APIs: `colorSpace` (not `encoding`), physical light units, `THREE.Timer`.
 - Colour management is on: diffuse/colour textures use `SRGBColorSpace`, normal/roughness/ARM maps stay linear.
-- The world is generated from a seeded random (`mulberry32(20260930)`). Changing the order of generation changes the whole layout; add new generation steps after existing ones when you can.
+- The world is generated from a seeded random (`mulberry32(20260930)`). Changing the order of generation changes the whole layout; add new generation steps after existing ones when you can. Retire a canvas texture by turning it into `burnTex(...)`, never by deleting it; appearance-only randomness uses `rand2`/`pick2`, not `rand()`.
 - Respect performance: the desktop scene is already heavy. When you add something big, consider trimming something less visible, and say so in the commit body.
 - Assets: only CC0 or similarly free-to-redistribute sources (Poly Haven preferred), downloaded into `assets/` (not hot-linked), at the smallest resolution that looks right (1k textures by default), compressed JPEG/KTX2 for textures and GLB (Draco/meshopt) for models. Credit each new source in the details menu Credits and the README. Keep a running size budget and report the total size of `assets/` in your report.
 - Do not commit secrets, API keys or `node_modules`.
