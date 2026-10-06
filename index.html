@@ -390,8 +390,8 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, aa:false, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  aa:true,  grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, aa:false, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  aa:true,  grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
@@ -433,13 +433,13 @@ renderer.shadowMap.type = THREE.PCFShadowMap;   // r186: PCF with a Vogel-disk k
 // The scene renders in linear HDR; OutputPass at the end of the composer applies this tone mapping and the sRGB transfer
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;   // tried AgX too: under this much haze it went milky; ACES keeps the greens rich
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = Q.canopyLight ? 1.35 : 1.0;   // the canopy-light map darkens the understory; open up the exposure so the trail still reads
 $('world').appendChild(renderer.domElement);
 const canvas = renderer.domElement; canvas.tabIndex = 0;
 
 const scene = new THREE.Scene();
 const FOG = new THREE.Color('#a3ad82');
-scene.fog = new THREE.FogExp2(FOG, Q.fog);
+scene.fog = new THREE.FogExp2(FOG.clone().multiplyScalar(Q.canopyLight ? 0.72 : 1), Q.fog);   // haze under a closed canopy is dimmer than the open-sky horizon
 scene.background = FOG;
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1700);
 camera.rotation.order = 'YXZ';
@@ -716,13 +716,63 @@ Object.assign(sun.shadow.camera,{left:-Q.shadowBox,right:Q.shadowBox,top:Q.shado
 sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = 2.5;
 scene.add(sun, sun.target);
-// Beyond the shadow box, fade to an average canopy shade instead of full sun, so no bright ring appears where it ends
+// Beyond the shadow box, fade to the canopy shade instead of full sun, so no bright ring appears where it ends:
+// the baked canopy-openness map where a material opts in (CANOPY_LIGHT, see "Canopy light"), else an average 0.3.
 { const chunk = THREE.ShaderChunk.shadowmap_pars_fragment, from = 'return mix( 1.0, shadow, shadowIntensity );';
   if (chunk.includes(from)) THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(from,
     `vec2 shEdge = min(shadowCoord.xy, 1.0 - shadowCoord.xy);
-     shadow = mix(0.3, shadow, smoothstep(0.0, 0.1, min(shEdge.x, shEdge.y)));
+     shadow = mix(CANOPY_SHADE, shadow, smoothstep(0.0, 0.1, min(shEdge.x, shEdge.y)));
      return mix( 1.0, shadow, shadowIntensity );`);
   else console.warn('Encanto: shadow chunk changed; out-of-box shade fade skipped'); }
+// Canopy light: lit materials compiled with CANOPY_LIGHT read two baked maps at their world position (vCanopyW).
+//   canopySky: how much sky is open straight above (0 closed .. 1 open). Indirect light (hemisphere + HDRI) is scaled
+//              down and tinted green under closed canopy, never to black (uCanopyK.x is the floor).
+//   canopySun: how much direct sun gets through along SUN_DIR. Used only where the real shadow map doesn't reach
+//              (beyond the shadow box) and for meshes that don't receive shadows, so nothing is darkened twice.
+{ const C = THREE.ShaderChunk, dirShadow = 'vDirectionalShadowCoord[ i ] ) : 1.0;';
+  C.shadowmap_pars_vertex = '#ifdef CANOPY_LIGHT\n varying vec3 vCanopyW;\n#endif\n' + C.shadowmap_pars_vertex;
+  C.shadowmap_vertex = `#ifdef CANOPY_LIGHT
+    { vec4 cw = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        cw = instanceMatrix * cw;
+      #endif
+      vCanopyW = (modelMatrix * cw).xyz; }
+    #endif
+    ` + C.shadowmap_vertex;
+  C.shadowmap_pars_fragment = `#ifdef CANOPY_LIGHT
+      varying vec3 vCanopyW;
+      uniform sampler2D uCanopyTop, uCanopySun; uniform mat4 uCanopyTopVP, uCanopySunVP; uniform vec4 uCanopySunPlane, uCanopyK;
+      vec2 canopyUV(mat4 vp, vec3 w){ vec4 c = vp*vec4(w, 1.0); return c.xy*0.5 + 0.5; }
+      float canopyIn(vec2 uv){ vec2 e = min(uv, 1.0 - uv); return step(0.0, min(e.x, e.y)); }
+      float canopySky(vec3 w){ vec2 uv = canopyUV(uCanopyTopVP, w); vec2 t = texture2D(uCanopyTop, uv).rg;
+        float o = mix(pow(t.r, uCanopyK.z), 1.0, smoothstep(t.g - 6.0, t.g + 0.5, w.y));   // the top of a crown is in the open
+        return mix(1.0, o, canopyIn(uv)); }
+      float canopySun(vec3 w){ vec2 uv = canopyUV(uCanopySunVP, w); vec2 t = texture2D(uCanopySun, uv).rg;
+        float d = dot(w, uCanopySunPlane.xyz) + uCanopySunPlane.w;                           // metres from the bake plane along the sun ray
+        float o = mix(1.0, mix(uCanopyK.y, 1.0, t.r), smoothstep(-t.g + 1.0, -t.g + 7.0, d));   // only below the first leaves
+        return mix(1.0, o, canopyIn(uv)); }
+      #define CANOPY_SHADE canopySun(vCanopyW)
+      #define CANOPY_SUN_NR canopySun(vCanopyW)
+    #else
+      #define CANOPY_SHADE 0.3
+      #define CANOPY_SUN_NR 1.0
+    #endif
+    ` + C.shadowmap_pars_fragment;
+  if (C.lights_fragment_begin.includes(dirShadow)) C.lights_fragment_begin = C.lights_fragment_begin.replace(dirShadow, 'vDirectionalShadowCoord[ i ] ) : CANOPY_SUN_NR;');
+  else console.warn('Encanto: light chunk changed; canopy sun for non-receivers skipped');
+  C.lights_fragment_end = `#ifdef CANOPY_LIGHT
+      { float co = canopySky(vCanopyW);
+        vec3 ck = mix(uCanopyK.x*vec3(0.82, 1.0, 0.6), vec3(1.0), co);   // under leaves: dimmer, and the bounce is leaf-green
+        #if defined( RE_IndirectDiffuse )
+          irradiance *= ck; iblIrradiance *= ck;
+        #endif
+        #if defined( RE_IndirectSpecular )
+          radiance *= ck;
+        #endif
+      }
+    #endif
+    ` + C.lights_fragment_end;
+}
 const SUN_COL = new THREE.Color('#ffd9a0').multiplyScalar(0.5);
 const sunView = {value:new THREE.Vector3()};   // sun direction in camera space, for leaf glow
 
@@ -1488,6 +1538,73 @@ const ripples=[];
   }
 }
 
+/* ================= Canopy light: a baked map of how open the canopy is above every point ================= */
+// Built once the leaf alpha maps are in (bakeCanopy() from maybeStart): the crown leaves and palm fronds are drawn
+// from straight above and from the sun into small float targets. Alpha multiplies into transmittance (overlapping
+// crowns get darker), and a max-blend keeps the top of the first leaves (height from above, distance from the sun).
+// A Gaussian blur turns that into soft openness 0..1 plus the averaged crown top. The ShaderChunk patch in
+// "Sky and light" reads it in every lit material (canopyLit), so no material is edited one by one.
+const CANOPY = { u: { uCanopyTop:{value:null}, uCanopySun:{value:null}, uCanopyTopVP:{value:new THREE.Matrix4()}, uCanopySunVP:{value:new THREE.Matrix4()},
+  uCanopySunPlane:{value:new THREE.Vector4()}, uCanopyK:{value:new THREE.Vector4(0.4, 0.04, 0.8, 0)} }, baked:false };   // K: indirect floor, sun floor, openness gamma
+function canopyLit(m){
+  if (!m || m.userData.canopy || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
+  m.userData.canopy = true;
+  const ob = m.onBeforeCompile, key = m.customProgramCacheKey();
+  m.onBeforeCompile = function(sh, r){ ob.call(this, sh, r); Object.assign(sh.uniforms, CANOPY.u);
+    sh.vertexShader = '#define CANOPY_LIGHT\n' + sh.vertexShader; sh.fragmentShader = '#define CANOPY_LIGHT\n' + sh.fragmentShader; };
+  m.customProgramCacheKey = () => key + '|canopy';
+}
+function bakeCanopy(){
+  if (!Q.canopyLight) return;
+  const N = Q.canopyRes, half = 205;
+  const mk = (n, depth) => new THREE.WebGLRenderTarget(n, n, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, depthBuffer:depth, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, generateMipmaps:false});
+  const raw = mk(N, false);
+  CANOPY.top = CANOPY.top || mk(N/2, false); CANOPY.sun = CANOPY.sun || mk(N/2, false);
+  const bake = new THREE.Scene();
+  const bakeMat = alpha => new THREE.ShaderMaterial({
+    uniforms:{uA:{value:alpha}, uSunView:{value:0}}, side:THREE.DoubleSide, depthTest:false, depthWrite:false,
+    blending:THREE.CustomBlending, blendEquation:THREE.MaxEquation, blendEquationAlpha:THREE.AddEquation,
+    blendSrcAlpha:THREE.ZeroFactor, blendDstAlpha:THREE.SrcAlphaFactor,   // rgb: max (first leaf); alpha: transmittance *= 1 - leaf alpha
+    vertexShader:`attribute vec4 aCell; uniform float uSunView; varying vec2 vUv; varying float vVal;
+      void main(){ vUv = aCell.xy + uv*aCell.zw; vec4 wp = modelMatrix*instanceMatrix*vec4(position, 1.0); vec4 mv = viewMatrix*wp;
+        vVal = uSunView > 0.5 ? mv.z : wp.y; gl_Position = projectionMatrix*mv; }`,
+    fragmentShader:`uniform sampler2D uA; varying vec2 vUv; varying float vVal;
+      void main(){ float a = texture2D(uA, vUv).g; if (a < 0.04) discard; gl_FragColor = vec4(vVal, vVal, vVal, 1.0 - a); }`});
+  const mats = [];
+  for (const [src, alpha] of [[leaves, FOLIAGE.cardA], [palmFronds, FOLIAGE.leafA]]){
+    const mat = bakeMat(alpha); mats.push(mat);
+    const p = new THREE.InstancedMesh(src.geometry, mat, src.count); p.instanceMatrix = src.instanceMatrix; p.frustumCulled = false; bake.add(p);
+  }
+  const blurMat = new THREE.ShaderMaterial({ uniforms:{tSrc:{value:raw.texture}, uTexel:{value:2/N}},
+    vertexShader:`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader:`uniform sampler2D tSrc; uniform float uTexel; varying vec2 vUv;
+      void main(){ float tr = 0.0, n = 0.0, h = 0.0, w = 0.0;
+        for (int i = -4; i <= 4; i++) for (int j = -4; j <= 4; j++){ vec2 o = vec2(float(i), float(j)); float k = exp(-dot(o, o)/14.0);
+          vec4 s = texture2D(tSrc, vUv + o*uTexel); float c = 1.0 - s.a; tr += s.a*k; n += k; h += s.g*c*k; w += c*k; }
+        gl_FragColor = vec4(tr/n, w > 1e-3 ? h/w : -1e4, 0.0, 1.0); }`, depthTest:false, depthWrite:false });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMat); quad.frustumCulled = false;
+  const quadScene = new THREE.Scene(); quadScene.add(quad);
+  const cam = new THREE.OrthographicCamera(-half, half, half, -half, 1, 1200);
+  const prevRT = renderer.getRenderTarget(), prevC = renderer.getClearColor(new THREE.Color()), prevA = renderer.getClearAlpha();
+  const pass = (sunView, out, vp) => {
+    cam.up.set(0, sunView ? 1 : 0, sunView ? 0 : -1);
+    if (sunView) cam.position.copy(SUN_DIR).multiplyScalar(500); else cam.position.set(0, 500, 0);
+    cam.lookAt(0, 0, 0); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+    vp.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    mats.forEach(m => m.uniforms.uSunView.value = sunView ? 1 : 0);
+    renderer.setRenderTarget(raw); renderer.setClearColor(new THREE.Color(-1e4, -1e4, -1e4), 1); renderer.clear(true, false, false);
+    renderer.render(bake, cam);
+    renderer.setRenderTarget(out); renderer.render(quadScene, cam);
+  };
+  pass(false, CANOPY.top, CANOPY.u.uCanopyTopVP.value);
+  pass(true, CANOPY.sun, CANOPY.u.uCanopySunVP.value);
+  CANOPY.u.uCanopySunPlane.value.set(-SUN_DIR.x, -SUN_DIR.y, -SUN_DIR.z, cam.position.dot(SUN_DIR));
+  renderer.setRenderTarget(prevRT); renderer.setClearColor(prevC, prevA);
+  CANOPY.u.uCanopyTop.value = CANOPY.top.texture; CANOPY.u.uCanopySun.value = CANOPY.sun.texture;
+  raw.dispose(); mats.forEach(m => m.dispose()); blurMat.dispose(); quad.geometry.dispose();
+  if (!CANOPY.baked){ CANOPY.baked = true; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(canopyLit); }); }
+}
+
 /* ================= Animals ================= */
 const M = (c,r=0.7,o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c, roughness:r}, o));
 const mRed=M('#c3141b',.5), mYel=M('#f2b51a',.5), mBlue=M('#1b5cc6',.45), mBeak=M('#e9dcc6',.35), mBlack=M('#121212',.45), mWhite=M('#f1ece2',.6);
@@ -2062,12 +2179,12 @@ function applyAssets(){
   }
 }
 let built=false, assetsDone=false, running=false;
-loadManager.onLoad = () => { assetsDone=true; if (running) applyAssets(); else maybeStart(); };
+loadManager.onLoad = () => { assetsDone=true; if (running){ applyAssets(); bakeCanopy(); } else maybeStart(); };
 // never trap anyone behind a stalled download: after a minute, let them in and finish loading in the background
 setTimeout(() => { if (!assetsDone){ assetsDone=true; maybeStart(); } }, 60000);
 function maybeStart(){
   if (!built || !assetsDone || running) return;
-  running = true; applyAssets();
+  running = true; applyAssets(); bakeCanopy();
   $('loading').textContent = 'Almost there…';
   const go = () => {
     $('loading').hidden=true; $('loadbar').hidden=true; $('enter').hidden=false;
@@ -2082,7 +2199,7 @@ if (new URLSearchParams(location.search).has('debug')){
   // layout fingerprint: proves appearance changes never moved a seeded tree, rock, log or bird
   const fp = [...T.trunk.map(t=>t.slice(0,3)), ...ROCKS.map(t=>t.slice(0,3)), ...LOGS.map(t=>t.slice(0,3)), ...birds.map(b=>[b.userData.f.ph||0])].flat();
   let hsh = 0; for (const v of fp) hsh = (Math.imul(hsh ^ Math.round(v*1000), 16777619)) >>> 0;
-  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
+  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, CANOPY, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
 }
 const hot = window.claude && window.claude.hot;
 function boot(data){

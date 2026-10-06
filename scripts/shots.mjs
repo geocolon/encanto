@@ -25,13 +25,14 @@ const TIER = {
   phone: { query: '',             ctx: { viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true } },
 };
 // Viewpoints: x is given relative to the trail line pathX(z); yaw 0 looks north (-z), -PI/2 looks east (+x)
-const VIEWS = [
+const VIEWS_ALL = [
   { name: 'trail',   z: 70,  dx: 0,     yaw: 0,             pitch: -0.03 },  // on the trail, looking along it
   { name: 'canopy',  z: -20, dx: -14,   yaw: -Math.PI / 2,  pitch: 0.05 },   // under dense canopy, across the trail
   { name: 'sun',     z: 132, dx: 0,     yaw: -0.12,         pitch: 0.45 },   // toward the sun through the sky window
   { name: 'pond',    z: 18,  dx: null, x: 29, yaw: -Math.PI / 2, pitch: -0.1 },  // at the pond's west edge, looking across the water
   { name: 'foliage', z: 40,  dx: 2.6,   yaw: -Math.PI / 2,  pitch: -0.3 },   // close-up of trail-side plants
 ];
+const VIEWS = process.env.SHOTS_VIEWS ? VIEWS_ALL.filter(v => process.env.SHOTS_VIEWS.split(',').includes(v.name)) : VIEWS_ALL;   // e.g. SHOTS_VIEWS=trail,sun
 
 const browser = await chromium.launch({ args: gpu
   ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-vsync', '--disable-frame-rate-limit']
@@ -48,6 +49,7 @@ for (const tier of TIERS) {
   await page.waitForSelector('#enter:not([hidden])', { state: 'attached', timeout: gpu ? 180000 : 600000 });
   await page.addStyleTag({ content: '.hud,#start,#splash,#details{display:none!important}' });
   await page.evaluate(() => { const s = document.getElementById('splash'); s && s.remove(); document.getElementById('enter').click(); });
+  if (process.env.SHOTS_EVAL) await page.evaluate(process.env.SHOTS_EVAL);   // tuning: e.g. SHOTS_EVAL='__enc.renderer.toneMappingExposure=1.2'
   const place = v => page.evaluate(v => {
     const E = window.__enc, p = E.player, pathX = z => Math.sin(z*0.012)*3.5 + Math.sin(z*0.05)*0.8;
     p.x = v.dx === null ? v.x : pathX(v.z) + v.dx; p.z = v.z; p.yaw = v.yaw; p.pitch = v.pitch; p.vy = 0; p.bob = 0;
@@ -59,7 +61,7 @@ for (const tier of TIERS) {
     await page.screenshot({ path: path.join(OUT, `${tier}-${v.name}.png`), scale: 'css' });
   }
   // Timing on the trail view
-  await place(VIEWS[0]); await page.waitForTimeout(800);
+  await place(VIEWS_ALL[0]); await page.waitForTimeout(800);
   const m = await page.evaluate(async () => {
     const E = window.__enc, r = E.renderer, gl = r.getContext(), px = new Uint8Array(4);
     const med = a => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
