@@ -56,6 +56,9 @@ canvas{display:block;outline:none}
 .keys{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;font-size:13px;color:var(--ink-dim)}
 .keys kbd{font:600 12px var(--body);color:var(--ink);border:1px solid var(--panel-edge);border-radius:4px;padding:1px 6px}
 #loading{font-size:13px;color:var(--glow);letter-spacing:.1em;text-transform:uppercase}
+#loadbar{justify-self:center;width:min(240px,60vw);height:3px;margin-top:-10px;border-radius:2px;background:rgba(243,236,214,.18);overflow:hidden}
+#loadbar i{display:block;height:100%;width:0;background:var(--glow);transition:width .3s ease}
+@media (prefers-reduced-motion:reduce){#loadbar i{transition:none}}
 #stick{left:24px;bottom:calc(28px + env(safe-area-inset-bottom,0px));width:110px;height:110px;border-radius:50%;border:1px solid var(--panel-edge);background:rgba(0,0,0,.18);display:none}
 #stick i{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(243,236,214,.55)}
 body.touch #stick{display:block}
@@ -222,6 +225,7 @@ body.touch #wayPrompt .touch-only{display:inline}
       <span><kbd>Shift</kbd> sprint</span><span><kbd>Space</kbd> jump</span>
     </div>
     <span id="loading">Growing the forest…</span>
+    <div id="loadbar" role="progressbar" aria-label="Loading the forest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
     <button class="btn" id="enter" hidden>Enter the rainforest</button>
     <button class="linkbtn" id="startDetails" type="button">Site details</button>
   </div>
@@ -277,6 +281,7 @@ body.touch #wayPrompt .touch-only{display:inline}
     <section>
       <h3>Credits</h3>
       <p>Created by Paloma. Built with three.js and made with help from Claude Code. <a href="https://github.com/geocolon/encanto" target="_blank" rel="noopener">Source on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>
+      <p>Sky, forest light and forest-floor textures from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven<span class="vh"> (opens in a new tab)</span></a>, released under CC0: Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01 and Red Laterite Soil Stones textures.</p>
     </section>
     <button class="btn" id="detailsReturn" type="button">Return to the forest</button>
   </div>
@@ -358,14 +363,22 @@ body.touch #wayPrompt .touch-only{display:inline}
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
-<script>
+<!-- three.js r186 as ES modules from jsDelivr; pin the same exact version on both lines -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 (() => {
 /* ================= Setup ================= */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -377,8 +390,13 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, aa:false, grass:22000, grassHalf:18, grassMid:16000, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120}
-  : {dpr:1.6, shadow:2048, aa:true,  grass:80000, grassHalf:28, grassMid:60000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, aa:false, grass:22000, grassHalf:18, grassMid:16000, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  aa:true,  grass:80000, grassHalf:28, grassMid:60000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320};
+// Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
+// (?quality=high or ?quality=low in the URL overrides the guess)
+const QUALITY = new URLSearchParams(location.search).get('quality');
+const LOW_END = !IS_TOUCH && (QUALITY==='low' || (QUALITY!=='high' && ((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4)));
+if (LOW_END) Object.assign(Q, {dpr:1, shadow:1024, shadowBox:30, ao:false});
 
 /* ================= World shape ================= */
 // A long, nearly straight trail so it recedes to a vanishing point in the haze
@@ -411,11 +429,11 @@ const renderer = new THREE.WebGLRenderer({antialias:Q.aa, powerPreference:'high-
 renderer.setPixelRatio(Math.min(devicePixelRatio,Q.dpr));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// With post-processing, the scene renders in linear HDR and the final pass does tone mapping,
-// color grading and sRGB conversion, like a film camera pipeline.
-const POST = !!(THREE.EffectComposer && THREE.RenderPass && THREE.ShaderPass);
-if (!POST){ renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1; }
+renderer.shadowMap.type = THREE.PCFShadowMap;   // r186: PCF with a Vogel-disk kernel; softness comes from sun.shadow.radius
+// The scene renders in linear HDR; OutputPass at the end of the composer applies this tone mapping and the sRGB transfer
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;   // tried AgX too: under this much haze it went milky; ACES keeps the greens rich
+renderer.toneMappingExposure = 1.0;
 $('world').appendChild(renderer.domElement);
 const canvas = renderer.domElement; canvas.tabIndex = 0;
 
@@ -427,12 +445,33 @@ const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1700
 camera.rotation.order = 'YXZ';
 const ANISO = renderer.capabilities.getMaxAnisotropy();
 
+/* ================= Downloaded assets (Poly Haven, CC0): HDR skies and forest-floor PBR maps ================= */
+// One LoadingManager drives the progress line on the start card; Enter stays hidden until everything is in.
+const assets = {ready:false, failed:[]};
+const loadManager = new THREE.LoadingManager();
+const showProgress = (done,total) => { const p=Math.round(done/Math.max(1,total)*100);
+  $('loading').textContent = `Loading the forest… ${p}%`; $('loadbar').firstElementChild.style.width = p+'%'; $('loadbar').setAttribute('aria-valuenow', p); };
+let loadDone=0, loadTotal=11;
+loadManager.onProgress = (url, done, total) => { loadDone=done; loadTotal=total; if (built) showProgress(done, total); };
+const groundTexOK = {value:1};   // drops to 0 if a floor map fails, so the shader falls back to plain soil instead of black
+loadManager.onError = url => { assets.failed.push(url); if (url.includes('/textures/')) groundTexOK.value = 0; console.warn('Encanto: could not load', url); };
+const texLoader = new THREE.TextureLoader(loadManager), hdrLoader = new HDRLoader(loadManager);
+const GROUND_SETS = {litter:'forest_leaves_03', moss:'brown_mud_leaves_01', clay:'red_laterite_soil_stones'};
+const groundTex = {};
+for (const [k,name] of Object.entries(GROUND_SETS)){
+  groundTex[k] = ['diff','nor_gl','arm'].map(m => { const t = texLoader.load(`assets/textures/${name}_${m}_1k.jpg`);
+    t.colorSpace = m==='diff' ? THREE.SRGBColorSpace : THREE.NoColorSpace;   // albedo is sRGB, normal/ARM are linear data
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; return t; });
+}
+const hdrSky = hdrLoader.load('assets/hdri/kloofendal_38d_partly_cloudy_puresky_1k.hdr');   // the sky you see through the gaps
+const hdrEnv = hdrLoader.load('assets/hdri/rainforest_trail_1k.hdr');                       // image-based light from a real rainforest
+
 /* ================= Procedural textures (drawn on canvas, no downloads) ================= */
 function makeTex(w,h,draw,{repeat,srgb=true}={}){
   const c = document.createElement('canvas'); c.width=w; c.height=h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
-  if (srgb) t.encoding = THREE.sRGBEncoding;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = ANISO;
   if (repeat){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0],repeat[1]); }
   return t;
@@ -460,17 +499,9 @@ const litterTex = makeTex(1024,1024,(g,w,h)=>{
   }
   for(let i=0;i<2500;i++){ g.fillStyle=`rgba(${rand()<.5?'20,14,8':'120,100,60'},${rr(.2,.5)})`; g.fillRect(rand()*w,rand()*h,rr(1,3),rr(1,3)); }
 },{repeat:[55,55]});
-// Ground grass texture: dense short blades in blue-green, used where the 3D blades thin out
-const grassTex = makeTex(1024,1024,(g,w,h)=>{
-  g.fillStyle='#24493f'; g.fillRect(0,0,w,h);
-  const cols=['#2f5e4f','#3a7060','#4b8a72','#5d9e84','#6fb39a','#1d3f35','#56905a','#7fbf9f','#2a5246'];
-  for(let i=0;i<26000;i++){
-    const x=rand()*w, y=rand()*h, l=rr(5,16), a=-Math.PI/2+rr(-0.6,0.6);
-    g.strokeStyle=pick(cols); g.globalAlpha=rr(.5,1); g.lineWidth=rr(1,2.2);
-    wrapDraw(w,h,x,y,18,(px,py)=>{ g.beginPath(); g.moveTo(px,py); g.lineTo(px+Math.cos(a)*l, py+Math.sin(a)*l); g.stroke(); });
-  }
-  g.globalAlpha=1;
-},{repeat:[90,90]});
+// (The painted blue-green ground texture is gone: the floor now uses Poly Haven PBR maps. This loop burns the
+//  182,000 random numbers it used to draw, so every tree, rock and bird keeps its seeded place.)
+for(let i=0;i<26000*7;i++) rand();
 // Bark: vertical fissures + lichen
 const barkTex = makeTex(256,512,(g,w,h)=>{
   const gr=g.createLinearGradient(0,0,w,0); gr.addColorStop(0,'#5a4a3a'); gr.addColorStop(.5,'#6a5a46'); gr.addColorStop(1,'#5a4a3a');
@@ -621,29 +652,52 @@ const rayTex = makeTex(8,256,(g,w,h)=>{ const gr=g.createLinearGradient(0,0,0,h)
 /* ================= Sky, light, environment reflections ================= */
 // Low sun ahead of the starting view, so light streams through the canopy toward you
 const SUN_DIR = new THREE.Vector3(0.12,0.75,-1).normalize();
+// Sky dome: the real Poly Haven sky (rotated so its sun sits on SUN_DIR), melting into the humid haze at the horizon.
+// Until the HDR arrives (or if it fails) it falls back to the old painted gradient.
 const skyMat = new THREE.ShaderMaterial({
   side:THREE.BackSide, depthWrite:false, fog:false,
-  uniforms:{top:{value:new THREE.Color('#3f86d0')}, mid:{value:new THREE.Color('#cfe0d4')}, bot:{value:FOG.clone()}, sunDir:{value:SUN_DIR}, sunI:{value:0.5}},
+  uniforms:{top:{value:new THREE.Color('#5d93c4')}, mid:{value:new THREE.Color('#d6e0d6')}, bot:{value:FOG.clone()}, sunDir:{value:SUN_DIR}, sunI:{value:0.5},
+    uSky:{value:null}, uHasSky:{value:0}, uRot:{value:0}, uSkyI:{value:1}},
   vertexShader:`varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader:`uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 sunDir; uniform float sunI; varying vec3 vP;
-    void main(){ vec3 d=normalize(vP); float h=d.y; vec3 c = mix(mid, top, smoothstep(0.1,0.7,h)); c = mix(bot, c, smoothstep(-0.02,0.15,h));
+  fragmentShader:`uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 sunDir; uniform float sunI;
+    uniform sampler2D uSky; uniform float uHasSky; uniform float uRot; uniform float uSkyI; varying vec3 vP;
+    void main(){ vec3 d=normalize(vP); float h=d.y; vec3 c = mix(mid, top, smoothstep(0.1,0.7,h));
       float s=max(dot(d,sunDir),0.);
-      c += vec3(1.0,0.88,0.62)*(pow(s,5.)*0.9 + pow(s,48.)*2.5 + smoothstep(0.9990,0.9996,s)*14.)*sunI;
+      if (uHasSky > 0.5){
+        vec2 uv = vec2(fract((atan(d.z,d.x)+uRot)*0.15915494+0.5), asin(clamp(h,-1.,1.))*0.31830989+0.5);
+        c = texture2D(uSky, uv).rgb*uSkyI;
+        c += vec3(1.0,0.9,0.7)*pow(s,6.)*0.25*sunI;                 // a little forward-scatter glow in the wet air
+      } else {
+        c += vec3(1.0,0.88,0.62)*(pow(s,5.)*0.9 + pow(s,48.)*2.5 + smoothstep(0.9990,0.9996,s)*14.)*sunI;
+      }
+      c = mix(bot, c, smoothstep(-0.02,0.22,h));                    // horizon melts into the haze
       gl_FragColor=vec4(c,1.); }`
 });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(1550,48,24), skyMat); scene.add(sky);
-{ // image-based lighting from a dimmer copy of the sky so leaves and water pick up soft reflections
+{ // placeholder image-based light from the painted sky; replaced by the rainforest HDRI once it loads
   const pm = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(), envSky = skyMat.clone();
   envSky.uniforms.sunI.value = 0.08;
   envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50,32,16), envSky));
   scene.environment = pm.fromScene(envScene, 0.04).texture; pm.dispose();
 }
-scene.add(new THREE.HemisphereLight('#e2ecd8', '#26331a', 0.55));
-const sun = new THREE.DirectionalLight('#ffe7bd', 1.4);
+scene.environmentIntensity = 0.55;
+// Green bounce: light filtered and reflected by the canopy keeps shade green and humid rather than grey
+const hemi = new THREE.HemisphereLight('#c9dfb0', '#3d4a26', 1.1);
+scene.add(hemi);
+// Warm sun with soft PCF shadows. The shadow box is tight and follows the player (see the main loop).
+const sun = new THREE.DirectionalLight('#ffe0b0', 4.2);
 sun.castShadow = true; sun.shadow.mapSize.set(Q.shadow,Q.shadow);
-Object.assign(sun.shadow.camera,{left:-60,right:60,top:60,bottom:-60,near:1,far:260});
-sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+Object.assign(sun.shadow.camera,{left:-Q.shadowBox,right:Q.shadowBox,top:Q.shadowBox,bottom:-Q.shadowBox,near:1,far:260});
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = 2.5;
 scene.add(sun, sun.target);
+// Beyond the shadow box, fade to an average canopy shade instead of full sun, so no bright ring appears where it ends
+{ const chunk = THREE.ShaderChunk.shadowmap_pars_fragment, from = 'return mix( 1.0, shadow, shadowIntensity );';
+  if (chunk.includes(from)) THREE.ShaderChunk.shadowmap_pars_fragment = chunk.replace(from,
+    `vec2 shEdge = min(shadowCoord.xy, 1.0 - shadowCoord.xy);
+     shadow = mix(0.3, shadow, smoothstep(0.0, 0.1, min(shEdge.x, shEdge.y)));
+     return mix( 1.0, shadow, shadowIntensity );`);
+  else console.warn('Encanto: shadow chunk changed; out-of-box shade fade skipped'); }
 const SUN_COL = new THREE.Color('#ffd9a0').multiplyScalar(0.5);
 const sunView = {value:new THREE.Vector3()};   // sun direction in camera space, for leaf glow
 
@@ -681,30 +735,66 @@ function addWind(mat, mode, strength, glow=0){
 /* ================= Terrain ================= */
 {
   const g = new THREE.PlaneGeometry(400,400,200,200); g.rotateX(-Math.PI/2);
-  const p = g.attributes.position, cols=[], c=new THREE.Color();
-  const base=new THREE.Color(1,1,1), moss=new THREE.Color(.8,1,.85), pathF=[], clay=new THREE.Color(1.0,.62,.45), sand=new THREE.Color(.95,.85,.65), mud=new THREE.Color(.45,.38,.3);
+  const p = g.attributes.position, pathF=[];
   for(let i=0;i<p.count;i++){
     const x=p.getX(i), z=p.getZ(i), rr0=Math.hypot(x,z), y=height(x,z)-Math.max(0,rr0-190)*0.6; p.setY(i,y);
-    const n=(Math.sin(x*0.09)*Math.cos(z*0.08)+Math.sin(x*0.31+z*0.2)*0.5+1.5)/3;
-    c.copy(base).multiplyScalar(0.8+n*0.25).lerp(moss, Math.max(0,n-0.55)*1.6);
     const dp=Math.abs(x-pathX(z));
-    let pf = dp<3.6 ? Math.min(1,(3.6-dp)/1.8) : 0;               // trail
-    if (y<WATER_Y+0.9) pf = Math.max(pf, Math.min(1,(WATER_Y+0.9-y)/1.2)); // pond mud
-    pathF.push(pf);
-    cols.push(c.r,c.g,c.b);
+    pathF.push(dp<3.6 ? Math.min(1,(3.6-dp)/1.8) : 0);             // red clay trail
   }
-  g.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
   g.setAttribute('aPath', new THREE.Float32BufferAttribute(pathF,1));
   g.computeVertexNormals();
-  const gmat = new THREE.MeshStandardMaterial({map:grassTex, bumpMap:grassTex, bumpScale:0.02, vertexColors:true, roughness:1, envMapIntensity:0.4});
+  // Forest floor: three Poly Haven PBR sets (leaf litter, mossy mud, red laterite clay) blended in the shader.
+  // Litter and moss trade places through two layers of noise; the trail is clay with a ragged edge; near the pond
+  // everything turns dark, wet and glossy. Each set is sampled twice at different scales and angles so tiles never line up.
+  const [lD,lN,lA] = groundTex.litter, [mD,mN,mA] = groundTex.moss, [cD,cN,cA] = groundTex.clay;
+  const gmat = new THREE.MeshStandardMaterial({normalMap:lN, roughness:1, metalness:0, envMapIntensity:0.6});
   gmat.onBeforeCompile = sh => {
-    sh.uniforms.uLitter={value:litterTex}; sh.uniforms.uClay={value:new THREE.Color(1.0,.62,.45)};
-    sh.vertexShader = 'attribute float aPath;\nvarying float vPath;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vPath = aPath;');
-    sh.fragmentShader = 'uniform sampler2D uLitter;\nuniform vec3 uClay;\nvarying float vPath;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-      vec3 lit = mapTexelToLinear(texture2D(uLitter, vUv*0.6)).rgb * uClay;
-      diffuseColor.rgb = mix(diffuseColor.rgb, lit, smoothstep(0.0,1.0,vPath));`);
+    Object.assign(sh.uniforms, {tLD:{value:lD}, tLN:{value:lN}, tLA:{value:lA}, tMD:{value:mD}, tMN:{value:mN}, tMA:{value:mA},
+      tCD:{value:cD}, tCN:{value:cN}, tCA:{value:cA}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)}, uTexOK:groundTexOK});
+    sh.vertexShader = 'attribute float aPath;\nvarying float vPath;\nvarying vec3 vGP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vPath = aPath; vGP = position;');
+    sh.fragmentShader = (Q.groundDetail ? '#define GROUND_DETAIL\n' : '') + `uniform sampler2D tLD, tLN, tLA, tMD, tMN, tMA, tCD, tCN, tCA; uniform vec3 uPond; uniform float uTexOK;
+      varying float vPath; varying vec3 vGP;
+      float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float gNoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+        return mix(mix(gHash(i),gHash(i+vec2(1,0)),f.x), mix(gHash(i+vec2(0,1)),gHash(i+vec2(1,1)),f.x), f.y); }
+      float gFbm(vec2 p){ return gNoise(p)*0.55 + gNoise(p*2.03+7.1)*0.3 + gNoise(p*4.1+3.7)*0.15; }
+      // one PBR set, sampled at two scales/angles and blended by noise (normals rotated back into the base frame)
+      struct GS { vec3 d; vec3 n; vec3 a; };
+      GS gSample(sampler2D D, sampler2D N, sampler2D A, vec2 uv, float k){
+        GS s; s.d = texture2D(D, uv).rgb; s.n = texture2D(N, uv).xyz*2.0-1.0; s.a = texture2D(A, uv).rgb;
+        #ifdef GROUND_DETAIL
+          const float c = 0.6216, sn = 0.7833;                       // ~51.6 degrees
+          vec2 uv2 = mat2(c, sn, -sn, c)*uv*0.71 + vec2(0.37, 0.61);
+          vec3 d2 = texture2D(D, uv2).rgb, n2 = texture2D(N, uv2).xyz*2.0-1.0, a2 = texture2D(A, uv2).rgb;
+          n2.xy = mat2(c, -sn, sn, c)*n2.xy;
+          s.d = mix(s.d, d2, k); s.n = mix(s.n, n2, k); s.a = mix(s.a, a2, k);
+        #endif
+        return s; }
+      ` + sh.fragmentShader
+      .replace('#include <map_fragment>', `
+        vec2 gw = vec2(vGP.x, -vGP.z);                                 // world metres, same orientation as the mesh UVs
+        float nBig = gFbm(gw*0.035), nMid = gFbm(gw*0.12+19.0), nTile = smoothstep(0.35, 0.65, gFbm(gw*0.07+41.0));
+        GS gL = gSample(tLD, tLN, tLA, gw/4.2, nTile);                  // leaf litter: scanned at 2.3 m, stretched to 4.2 m for big tropical leaves
+        gL.d *= vec3(1.3, 1.08, 0.82);                                 // warmer, browner: freshly fallen tropical leaves
+        GS gM = gSample(tMD, tMN, tMA, gw/1.6+0.5, nTile);              // mossy mud (1.3 m scan)
+        GS gC = gSample(tCD, tCN, tCA, gw/2.2+0.25, nTile);             // red laterite clay (2.0 m scan)
+        float gWet = 1.0 - smoothstep(uPond.z*1.08, uPond.z*1.4, length(vGP.xz - uPond.xy) + (nMid-0.5)*4.0);   // pond margin (most of the valley floor lies below WATER_Y, so use distance, not height)
+        float gwM = smoothstep(0.38, 0.58, nBig*0.75 + nMid*0.35 + gWet*0.6 - 0.05);
+        float gwC = smoothstep(0.3, 0.75, vPath + (nMid-0.5)*0.55);
+        GS gG; gG.d = mix(gL.d, gM.d, gwM); gG.n = mix(gL.n, gM.n, gwM); gG.a = mix(gL.a, gM.a, gwM);
+        gG.d = mix(gG.d, gC.d, gwC); gG.n = mix(gG.n, gC.n, gwC); gG.a = mix(gG.a, gC.a, gwC);
+        gG.d *= 0.82 + 0.36*nBig;                                       // macro variation: sun-bleached and damp patches
+        gG.d *= mix(vec3(1.0), vec3(0.42, 0.4, 0.36), gWet);             // wet ground darkens
+        vec3 gAlbedo = mix(vec3(0.16, 0.12, 0.08), gG.d, uTexOK);
+        diffuseColor.rgb *= gAlbedo;
+        float gRough = mix(0.95, mix(gG.a.g, 0.22, gWet*0.85), uTexOK);  // ARM: R = AO, G = roughness
+        float gAO = mix(1.0, gG.a.r, uTexOK);
+        vec3 gN = mix(vec3(0.0,0.0,1.0), normalize(vec3(gG.n.xy*mix(1.0, 0.45, gWet), max(gG.n.z, 0.2))), uTexOK);`)
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gRough;')
+      .replace('#include <normal_fragment_maps>', 'normal = normalize( tbn * gN );')
+      .replace('#include <aomap_fragment>', 'reflectedLight.indirectDiffuse *= gAO; reflectedLight.indirectSpecular *= gAO;');
   };
-  gmat.customProgramCacheKey = () => 'ground-blend';
+  gmat.customProgramCacheKey = () => 'ground-pbr-'+Q.groundDetail;
   const ground = new THREE.Mesh(g, gmat);
   ground.receiveShadow = true; scene.add(ground);
 }
@@ -1051,7 +1141,7 @@ const curtains = instanced(curtainGeo, curtainMat, T.curtain, {cast:Q.frondShado
 const grassCam = {value:new THREE.Vector2()};
 function grassLayer(N, H, inner, wMul, hMul){
   const segs=4, pos=[], col=[], nor=[], idx=[];
-  const cBase=new THREE.Color('#12302a'), cTip=new THREE.Color('#7cc4a4');
+  const cBase=new THREE.Color('#16301f'), cTip=new THREE.Color('#86b884');   // retuned for color management: the old hexes went cyan
   for(let i=0;i<=segs;i++){
     const t=i/segs, w=0.045*(1-t)+0.003, bend=t*t*0.28, c=cBase.clone().lerp(cTip,Math.pow(t,0.8));
     pos.push(-w,t,bend, w,t,bend); col.push(c.r,c.g,c.b,c.r,c.g,c.b); nor.push(0,1,0.25,0,1,0.25);
@@ -1174,6 +1264,7 @@ const mists=[];
 
 /* The Waystone (future form) */
 const glowMat = new THREE.MeshBasicMaterial({color:'#ffb64a'});
+const WAY_CANDELA = 25;   // physical light units (r155+): inverse-square falloff, so the old 2.2 becomes ~55 cd
 const way = new THREE.Group();
 {
   const baseY=height(WAYSTONE.x,WAYSTONE.z);
@@ -1183,7 +1274,7 @@ const way = new THREE.Group();
   const rune1=new THREE.Mesh(new THREE.TorusGeometry(0.6,0.07,6,24), glowMat); rune1.position.set(0,5.2,1.05);
   const rune2=new THREE.Mesh(new THREE.BoxGeometry(0.08,1.6,0.08), glowMat); rune2.position.set(0,3.6,1.18);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(2.6,0.06,6,48), glowMat); ring.position.y=4.3; ring.rotation.x=Math.PI/2; ring.name='ring';
-  const light=new THREE.PointLight('#ffb64a',2.2,26,2); light.position.y=5; light.name='light';
+  const light=new THREE.PointLight('#ffb64a',2.2*WAY_CANDELA,26,2); light.position.y=5; light.name='light';
   way.add(plinth,stone,cap,rune1,rune2,ring,light);
   way.position.set(WAYSTONE.x,baseY,WAYSTONE.z); scene.add(way);
   colliders.push({x:WAYSTONE.x,z:WAYSTONE.z,r:2.2});
@@ -1566,16 +1657,32 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 const seen = new Set();
 function spot(kind, obj, msg){ if (seen.has(kind)) return; if (obj.position.distanceTo(camera.position) < 16){ seen.add(kind); toast(msg); } }
 
-/* ================= Camera pipeline: god rays → bloom → film grade ================= */
-let composer=null, raysPass=null, gradePass=null;
-if (POST){
+/* ================= Camera pipeline: scene → ambient occlusion → god rays → bloom → lens → OutputPass ================= */
+let composer=null, raysPass=null, gradePass=null, aoPass=null;
+{
   const pr=renderer.getPixelRatio();
-  const rt=new THREE.WebGLRenderTarget(innerWidth*pr, innerHeight*pr, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter});
-  composer=new THREE.EffectComposer(renderer, rt);
-  composer.addPass(new THREE.RenderPass(scene, camera));
+  // Linear HDR target with a depth texture, so the AO pass can read the depth of the real render
+  // (alpha-cut leaves and the GPU grass included) instead of drawing the whole forest a second time.
+  const rt=new THREE.WebGLRenderTarget(innerWidth*pr, innerHeight*pr, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
+    depthTexture: Q.ao ? new THREE.DepthTexture(innerWidth*pr, innerHeight*pr) : null});
+  composer=new EffectComposer(renderer, rt);
+  composer.addPass(new RenderPass(scene, camera));
+  if (Q.ao){
+    // GTAO on the main depth buffer; normals are rebuilt from depth. Each frame it reads whichever buffer the scene went into.
+    class SceneDepthGTAO extends GTAOPass {
+      render(r, write, read, dt, mask){ const d=read.depthTexture;
+        this.gtaoMaterial.uniforms.tDepth.value = d; this.pdMaterial.uniforms.tDepth.value = d; super.render(r, write, read, dt, mask); }
+    }
+    aoPass = new SceneDepthGTAO(scene, camera, innerWidth*pr, innerHeight*pr);
+    aoPass.setGBuffer(rt.depthTexture);   // no separate normal/depth render
+    aoPass.updateGtaoMaterial({radius:1.8, distanceExponent:1.5, thickness:1.5, scale:1.0, samples:12});
+    aoPass.updatePdMaterial({lumaPhi:10, depthPhi:2, normalPhi:3, radius:6, rings:2, samples:12});
+    aoPass.blendIntensity = 0.95;
+    composer.addPass(aoPass);
+  }
   // Crepuscular rays: march each pixel toward the sun's screen position and gather bright sky seen through gaps
-  raysPass=new THREE.ShaderPass({
-    uniforms:{tDiffuse:{value:null}, uSun:{value:new THREE.Vector2(.5,.6)}, uStrength:{value:0}, uThreshold:{value:1.1}, uFlare:{value:0}, uAspect:{value:1.6}},
+  raysPass=new ShaderPass({
+    uniforms:{tDiffuse:{value:null}, uSun:{value:new THREE.Vector2(.5,.6)}, uStrength:{value:0}, uThreshold:{value:2.5}, uFlare:{value:0}, uAspect:{value:1.6}},
     vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
     fragmentShader:`uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStrength; uniform float uThreshold; uniform float uFlare; uniform float uAspect; varying vec2 vUv;
       float disc(vec2 p, vec2 c, float r, float soft){ float d=length((p-c)*vec2(uAspect,1.0)); return smoothstep(r, r*soft, d); }
@@ -1603,43 +1710,43 @@ if (POST){
           float ring=smoothstep(0.018,0.0,abs(r-0.24));
           f+=ring*mix(vec3(1.0,0.25,0.05),vec3(1.0,0.85,0.2),smoothstep(-1.0,1.0,sin(a*3.0)))*0.35;   // halo
           f+=pow(abs(sin(a*7.0+0.4)),24.0)*exp(-r*7.0)*vec3(1.0,0.8,0.45)*1.4;                         // starburst
-          f+=exp(-abs(d.y)*90.0)*exp(-abs(d.x)*2.2)*vec3(1.0,0.45,0.12)*0.9;                          // anamorphic streak
           f+=exp(-r*9.0)*vec3(1.0,0.7,0.35)*0.8;                                                         // glow
-          col+=f*vis;
+          col+=f*vis*0.4;                                                    // kept faint: a real lens, not a game filter
         }
         gl_FragColor=vec4(col,1.0);
       }`
   });
   composer.addPass(raysPass);
-  if (Q.bloom && THREE.UnrealBloomPass) composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.28, 0.6, 1.2));
-  // Tone map (ACES), split-tone (green shadows, warm highlights), contrast, vignette, grain, sRGB
-  gradePass=new THREE.ShaderPass({
-    uniforms:{tDiffuse:{value:null}, uTime:{value:0}, uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}, uExposure:{value:1.15}},
+  // Gentle bloom: the threshold sits above lit foliage, so only the sky, the sun and glowing things bleed
+  if (Q.bloom) composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.22, 0.55, 1.6));
+  // Lens: a soft vignette and fine grain, applied in linear light before tone mapping
+  gradePass=new ShaderPass({
+    uniforms:{tDiffuse:{value:null}, uTime:{value:0}, uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}},
     vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader:`uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; uniform float uExposure; varying vec2 vUv;
-      vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }
-      vec3 toSRGB(vec3 c){ return mix(c*12.92, 1.055*pow(c,vec3(1.0/2.4))-0.055, step(0.0031308,c)); }
+    fragmentShader:`uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; varying vec2 vUv;
       void main(){
-        vec3 c=aces(texture2D(tDiffuse,vUv).rgb*uExposure);
-        float l=dot(c,vec3(.299,.587,.114));
-        c=mix(c, c*vec3(0.86,1.04,0.9), (1.0-l)*0.45);
-        c=mix(c, c*vec3(1.1,1.03,0.86), l*0.5);
-        c=toSRGB(c);
-        c=(c-0.5)*1.08+0.5;
-        vec2 q=vUv-0.5; c*=1.0-dot(q,q)*0.85;
+        vec3 c=texture2D(tDiffuse,vUv).rgb;
+        vec2 q=vUv-0.5; c*=1.0-dot(q,q)*0.45;
         float n=fract(sin(dot(vUv*uRes+uTime*61.0,vec2(12.9898,78.233)))*43758.5453);
-        c+=(n-0.5)*0.022;
-        gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);
+        c*=1.0+(n-0.5)*0.05;
+        gl_FragColor=vec4(max(c,0.0),1.0);
       }`
   });
   composer.addPass(gradePass);
+  // Tone mapping (renderer.toneMapping) and the sRGB transfer happen here, last
+  composer.addPass(new OutputPass());
 }
 const sunNDC=new THREE.Vector3(), camFwd=new THREE.Vector3();
+const RAYS = {strength:0.45, flare:0.6};   // the HDR sun is far brighter than the old painted one, so these sit lower
 
 /* ================= Main loop ================= */
-const clock=new THREE.Clock(), fwd=new THREE.Vector3(), right=new THREE.Vector3(), tmpV=new THREE.Vector3();
-function frame(){
-  const dt=Math.min(clock.getDelta(),0.05), t=clock.elapsedTime;
+const clock=new THREE.Timer(), fwd=new THREE.Vector3(), right=new THREE.Vector3(), tmpV=new THREE.Vector3();
+// Sun shadow box: light-space axes, so the box can be snapped to whole shadow texels (no shimmer as you walk)
+const SH_X=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), SUN_DIR).normalize(), SH_Y=new THREE.Vector3().crossVectors(SUN_DIR, SH_X), shC=new THREE.Vector3();
+const SH_TEXEL=2*Q.shadowBox/Q.shadow;
+function frame(ts){
+  clock.update(ts);
+  const dt=Math.min(clock.getDelta(),0.05), t=clock.getElapsed();
   windTime.value = t;
   grassCam.value.set(player.x, player.z);
 
@@ -1683,8 +1790,11 @@ function frame(){
 
   camera.position.set(player.x, player.y+Math.sin(player.bob)*0.035, player.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
-  sun.position.set(player.x+SUN_DIR.x*120, player.y+SUN_DIR.y*120, player.z+SUN_DIR.z*120);
-  sun.target.position.set(player.x, player.y, player.z);
+  // shadow box centred a little ahead of you (where you look), snapped to the shadow-map grid
+  shC.set(player.x-Math.sin(player.yaw)*Q.shadowBox*0.45, player.y, player.z-Math.cos(player.yaw)*Q.shadowBox*0.45);
+  { const a=shC.dot(SH_X), b=shC.dot(SH_Y); shC.addScaledVector(SH_X, Math.round(a/SH_TEXEL)*SH_TEXEL-a).addScaledVector(SH_Y, Math.round(b/SH_TEXEL)*SH_TEXEL-b); }
+  sun.position.copy(shC).addScaledVector(SUN_DIR,120);
+  sun.target.position.copy(shC);
   sky.position.copy(camera.position);
 
   // Ambient world
@@ -1699,7 +1809,7 @@ function frame(){
   way.getObjectByName('ring').position.y=4.3+Math.sin(t*1.2)*0.3;
   // after the first reading the Waystone stays awake (brighter); a brief flash unless reduced motion
   wayFlash = REDUCED.matches ? 0 : Math.max(0, wayFlash-dt*0.8);
-  way.getObjectByName('light').intensity=2+Math.sin(t*2)*0.4+(wayRead?1.2:0)+wayFlash*6;
+  way.getObjectByName('light').intensity=(2+Math.sin(t*2)*0.4+(wayRead?1.2:0)+wayFlash*6)*WAY_CANDELA;
   way.getObjectByName('ring').scale.setScalar(1+wayFlash*0.35);
   for (const r of rays) r.material.opacity = 0.035 + Math.sin(t*0.4+r.userData.ph)*0.015;
   for (const s of seeds){ if (!s.userData.got){ s.position.y=s.userData.baseY+Math.sin(t*2+s.userData.phase)*0.22; } }
@@ -1777,8 +1887,8 @@ function frame(){
     camera.getWorldDirection(camFwd);
     const facing = THREE.MathUtils.smoothstep(camFwd.dot(SUN_DIR), 0.05, 0.6);
     raysPass.uniforms.uSun.value.set(sunNDC.x*0.5+0.5, sunNDC.y*0.5+0.5);
-    raysPass.uniforms.uStrength.value = sunNDC.z<1 ? 1.1*facing : 0;
-    raysPass.uniforms.uFlare.value = sunNDC.z<1 ? facing : 0;
+    raysPass.uniforms.uStrength.value = sunNDC.z<1 ? RAYS.strength*facing : 0;
+    raysPass.uniforms.uFlare.value = sunNDC.z<1 ? RAYS.flare*facing : 0;
     raysPass.uniforms.uAspect.value = innerWidth/innerHeight;
     gradePass.uniforms.uTime.value = t;
     composer.render();
@@ -1790,11 +1900,50 @@ addEventListener('resize', () => {
   if (composer){ composer.setSize(innerWidth,innerHeight); gradePass.uniforms.uRes.value.set(innerWidth,innerHeight); }
 });
 
+/* ================= Start-up: wait for the forest to be built AND every asset to arrive ================= */
+// Wires the HDRs into the sky and the image-based light. Safe to call again if a late file arrives after a timeout.
+function applyAssets(){
+  if (hdrEnv.image && hdrEnv.image.data && !hdrEnv.userData.used){
+    hdrEnv.userData.used = true; hdrEnv.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(renderer), old = scene.environment;
+    scene.environment = pm.fromEquirectangular(hdrEnv).texture; pm.dispose(); hdrEnv.dispose(); old && old.dispose();
+  }
+  if (hdrSky.image && hdrSky.image.data && !hdrSky.userData.used){
+    hdrSky.userData.used = true; hdrSky.wrapS = THREE.RepeatWrapping;
+    // find the sun (centroid of the brightest pixels) and turn the sky so it sits exactly on SUN_DIR
+    const {data, width:w, height:h} = hdrSky.image, half = data instanceof Uint16Array, f = half ? THREE.DataUtils.fromHalfFloat : v => v;
+    const lum = i => f(data[i*4])*0.2126 + f(data[i*4+1])*0.7152 + f(data[i*4+2])*0.0722;
+    let max = 0; for (let i=0;i<w*h/2;i++) max = Math.max(max, lum(i));          // upper half only: the sky
+    let sx=0, sy=0, sz=0;
+    for (let i=0;i<w*h/2;i++){ const L=lum(i); if (L < max*0.5) continue;
+      const u=((i%w)+0.5)/w, v=1-(Math.floor(i/w)+0.5)/h, phi=(u-0.5)*Math.PI*2;
+      sx += Math.cos(phi)*L; sz += Math.sin(phi)*L; sy += v*L; }
+    skyMat.uniforms.uRot.value = Math.atan2(sz, sx) - Math.atan2(SUN_DIR.z, SUN_DIR.x);
+    skyMat.uniforms.uSky.value = hdrSky; skyMat.uniforms.uHasSky.value = 1; skyMat.uniforms.uSkyI.value = 0.6;
+  }
+}
+let built=false, assetsDone=false, running=false;
+loadManager.onLoad = () => { assetsDone=true; if (running) applyAssets(); else maybeStart(); };
+// never trap anyone behind a stalled download: after a minute, let them in and finish loading in the background
+setTimeout(() => { if (!assetsDone){ assetsDone=true; maybeStart(); } }, 60000);
+function maybeStart(){
+  if (!built || !assetsDone || running) return;
+  running = true; applyAssets();
+  $('loading').textContent = 'Almost there…';
+  const go = () => {
+    $('loading').hidden=true; $('loadbar').hidden=true; $('enter').hidden=false;
+    if (document.activeElement===document.body && !$('splash')) $('enter').focus();
+    frame();
+  };
+  // compile every shader before showing Enter, so the first frames are not black or untextured
+  renderer.compileAsync(scene, camera).then(go, go);
+}
 const hot = window.claude && window.claude.hot;
 function boot(data){
   if (data && data.player) Object.assign(player, data.player);
-  $('loading').hidden=true; $('enter').hidden=false;
-  frame();
+  built = true;
+  if (!assetsDone) showProgress(loadDone, loadTotal);
+  maybeStart();
 }
 if (hot && hot.snapshot) hot.snapshot(() => ({player:{x:player.x,z:player.z,y:player.y,yaw:player.yaw,pitch:player.pitch}}));
 hot && hot.ready ? hot.ready(boot) : boot(hot && hot.data || {});

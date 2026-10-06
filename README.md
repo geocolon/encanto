@@ -6,7 +6,7 @@ Walk through a crowded Amazon rainforest valley in a gentle sun shower, right in
 
 **Live site:** https://geocolon.github.io/encanto/
 
-Everything is generated in code inside a single `index.html`: terrain, trees, grass, flowers, animals, rain and the forest soundscape. The only download is three.js from a CDN.
+Everything is generated in code inside a single `index.html`: terrain, trees, grass, flowers, animals, rain and the forest soundscape. Beyond three.js (from a CDN), the only downloads are a few CC0 sky and forest-floor files from Poly Haven in `assets/` (about 8 MB).
 
 ## Controls
 
@@ -56,5 +56,6 @@ The script syntax-checks the game code and, if Playwright is installed (`npm i -
 
 ## Built with
 
-- [three.js](https://threejs.org/) r128 (MIT)
+- [three.js](https://threejs.org/) r186 (MIT)
+- [Poly Haven](https://polyhaven.com/) (CC0): Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01 and Red Laterite Soil Stones textures
 - Fonts: Spectral SC and Karla from Google Fonts (SIL Open Font License)
