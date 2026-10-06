@@ -375,7 +375,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -391,8 +391,8 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true, vol:true, volScale:0.25, volSteps:12}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true, vol:true, volScale:0.5, volSteps:24};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
@@ -443,7 +443,11 @@ const canvas = renderer.domElement; canvas.tabIndex = 0;
 
 const scene = new THREE.Scene();
 const FOG = new THREE.Color('#a3ad82');
-scene.fog = new THREE.FogExp2(FOG.clone().multiplyScalar(Q.canopyLight ? 0.72 : 1), Q.fog);   // haze under a closed canopy is dimmer than the open-sky horizon
+const VOL_FOG = 0.5;   // with the volumetric pass the near and mid haze is marched (see Camera pipeline); the in-material fog keeps only the far distance
+// Volumetric air (Q.vol): base extinction per metre at the valley floor, height falloff (m), floor height, phase g (forward
+// scattering), march length (m), sun scattering gain, and the sky-light haze colour and gain (scaled by canopy openness)
+const VOL = {density:0.012, fall:10, floorY:-2, g:0.7, maxDist:110, sun:0.5, amb:new THREE.Color('#a9bcc4'), ambI:0.6};
+scene.fog = new THREE.FogExp2(FOG.clone().multiplyScalar(Q.canopyLight ? 0.72 : 1), Q.fog*(Q.vol ? VOL_FOG : 1));   // haze under a closed canopy is dimmer than the open-sky horizon
 scene.background = FOG;
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1700);
 camera.rotation.order = 'YXZ';
@@ -735,6 +739,19 @@ scene.add(sun, sun.target);
 //              down and tinted green under closed canopy, never to black (uCanopyK.x is the floor).
 //   canopySun: how much direct sun gets through along SUN_DIR. Used only where the real shadow map doesn't reach
 //              (beyond the shadow box) and for meshes that don't receive shadows, so nothing is darkened twice.
+// (also used by the volumetric light pass, which marches through the same maps)
+const CANOPY_GLSL = `
+      uniform sampler2D uCanopyTop, uCanopySun; uniform mat4 uCanopyTopVP, uCanopySunVP; uniform vec4 uCanopySunPlane, uCanopyK;
+      vec2 canopyUV(mat4 vp, vec3 w){ vec4 c = vp*vec4(w, 1.0); return c.xy*0.5 + 0.5; }
+      float canopyIn(vec2 uv){ vec2 e = min(uv, 1.0 - uv); return step(0.0, min(e.x, e.y)); }
+      float canopySky(vec3 w){ vec2 uv = canopyUV(uCanopyTopVP, w); vec2 t = texture2D(uCanopyTop, uv).rg;
+        float o = mix(pow(t.r, uCanopyK.z), 1.0, smoothstep(t.g - 6.0, t.g + 0.5, w.y));   // the top of a crown is in the open
+        return mix(1.0, o, canopyIn(uv)); }
+      float canopySun(vec3 w){ vec2 uv = canopyUV(uCanopySunVP, w); vec2 t = texture2D(uCanopySun, uv).rg;
+        float d = dot(w, uCanopySunPlane.xyz) + uCanopySunPlane.w;                           // metres from the bake plane along the sun ray
+        float o = mix(1.0, mix(uCanopyK.y, 1.0, t.r), smoothstep(-t.g + 1.0, -t.g + 7.0, d));   // only below the first leaves
+        return mix(1.0, o, canopyIn(uv)); }
+`;
 { const C = THREE.ShaderChunk, dirShadow = 'vDirectionalShadowCoord[ i ] ) : 1.0;';
   C.shadowmap_pars_vertex = '#ifdef WORLD_W\n varying vec3 vCanopyW;\n#endif\n' + C.shadowmap_pars_vertex;
   C.shadowmap_vertex = `#ifdef WORLD_W
@@ -754,16 +771,7 @@ scene.add(sun, sun.target);
       float wetness(vec3 w){ return clamp(uWet*(0.8 + 0.45*(1.0 - smoothstep(uWetPond.z*1.05, uWetPond.z*1.7, length(w.xz - uWetPond.xy)))), 0.0, 1.0); }
     #endif
     #ifdef CANOPY_LIGHT
-      uniform sampler2D uCanopyTop, uCanopySun; uniform mat4 uCanopyTopVP, uCanopySunVP; uniform vec4 uCanopySunPlane, uCanopyK;
-      vec2 canopyUV(mat4 vp, vec3 w){ vec4 c = vp*vec4(w, 1.0); return c.xy*0.5 + 0.5; }
-      float canopyIn(vec2 uv){ vec2 e = min(uv, 1.0 - uv); return step(0.0, min(e.x, e.y)); }
-      float canopySky(vec3 w){ vec2 uv = canopyUV(uCanopyTopVP, w); vec2 t = texture2D(uCanopyTop, uv).rg;
-        float o = mix(pow(t.r, uCanopyK.z), 1.0, smoothstep(t.g - 6.0, t.g + 0.5, w.y));   // the top of a crown is in the open
-        return mix(1.0, o, canopyIn(uv)); }
-      float canopySun(vec3 w){ vec2 uv = canopyUV(uCanopySunVP, w); vec2 t = texture2D(uCanopySun, uv).rg;
-        float d = dot(w, uCanopySunPlane.xyz) + uCanopySunPlane.w;                           // metres from the bake plane along the sun ray
-        float o = mix(1.0, mix(uCanopyK.y, 1.0, t.r), smoothstep(-t.g + 1.0, -t.g + 7.0, d));   // only below the first leaves
-        return mix(1.0, o, canopyIn(uv)); }
+      ${CANOPY_GLSL}
       #define CANOPY_SHADE canopySun(vCanopyW)
       #define CANOPY_SUN_NR canopySun(vCanopyW)
     #else
@@ -1470,7 +1478,7 @@ const mists=[];
     const m=new THREE.Sprite(new THREE.SpriteMaterial({map:dotTex, color:'#efe6c4', transparent:true, opacity:0, depthWrite:false}));
     const z=rr(-170,170), x=pathX(z)+rr(-60,60), s=rr(18,40);
     m.position.set(x, height(x,z)+rr(3,10), z); m.scale.set(s*1.6,s*0.7,1);
-    m.userData.base=rr(.07,.16); scene.add(m); mists.push(m);
+    m.userData.base=rr(.07,.16); if (!Q.vol){ scene.add(m); mists.push(m); }   // with Q.vol the volumetric pass is the mist; the loop still runs so rand() stays in step
   }
 }
 
@@ -1508,7 +1516,7 @@ const rays=[];
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), SUN_DIR);
   [150,124,118,112,84,52,14,-28,-70,-96,-132,-158].forEach(z=>{
     const x=pathX(z)+rr(-5,5), m=new THREE.Mesh(geo, rayMat.clone());
-    m.position.set(x,height(x,z)-1,z); m.quaternion.copy(q); m.userData.ph=rand()*6; scene.add(m); rays.push(m);
+    m.position.set(x,height(x,z)-1,z); m.quaternion.copy(q); m.userData.ph=rand()*6; if (!Q.vol){ scene.add(m); rays.push(m); }   // Q.vol: real shafts instead (seeded loop kept)
   });
 }
 
@@ -1955,32 +1963,34 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 const seen = new Set();
 function spot(kind, obj, msg){ if (seen.has(kind)) return; if (obj.position.distanceTo(camera.position) < 16){ seen.add(kind); toast(msg); } }
 
-/* ================= Camera pipeline: scene → ambient occlusion → god rays → bloom → lens → OutputPass ================= */
-let composer=null, raysPass=null, gradePass=null, aoPass=null, msRT=null;
+/* ================= Camera pipeline: scene → ambient occlusion → volumetric light → lens flare → bloom → lens → OutputPass ================= */
+let composer=null, raysPass=null, gradePass=null, aoPass=null, msRT=null, volPass=null;
 {
   const pr=renderer.getPixelRatio(), W=innerWidth*pr, H=innerHeight*pr;
   // Linear HDR target with a depth texture, so the AO pass can read the depth of the real render
   // (alpha-cut leaves and the GPU grass included) instead of drawing the whole forest a second time.
   const rt=new THREE.WebGLRenderTarget(W, H, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
-    depthTexture: Q.ao && !Q.msaa ? new THREE.DepthTexture(W, H) : null});
+    depthTexture: (Q.ao || Q.vol) && !Q.msaa ? new THREE.DepthTexture(W, H) : null});
   composer=new EffectComposer(renderer, rt);
+  let sceneDepthTex = null;   // depth of this frame's scene render (GTAO and the volumetric pass read it)
   // MSAA (Q.msaa samples) only for the scene itself: it renders into msRT, which resolves colour and depth once, and is
   // copied into the composer. The canvas' own antialias never touched the scene, and making the composer targets
   // multisampled resolved every post pass (about +30% frame time on an Intel iGPU). With alphaToCoverage (A2C) the
   // leaf cut-outs are anti-aliased too. GTAO reads msRT's resolved depth.
   if (Q.msaa){
     msRT = new THREE.WebGLRenderTarget(W, H, {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
-      samples:Q.msaa, depthTexture: Q.ao ? new THREE.DepthTexture(W, H) : null});
+      samples:Q.msaa, depthTexture: Q.ao || Q.vol ? new THREE.DepthTexture(W, H) : null});
     class MSRenderPass extends RenderPass {
       constructor(){ super(scene, camera);
         this.copy = new FullScreenQuad(new THREE.ShaderMaterial({uniforms:{tSrc:{value:msRT.texture}}, depthTest:false, depthWrite:false,
           vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
           fragmentShader:`uniform sampler2D tSrc; varying vec2 vUv; void main(){ gl_FragColor=texture2D(tSrc,vUv); }`})); }
-      render(r, write, read, dt, mask){ super.render(r, write, msRT, dt, mask); r.setRenderTarget(read); this.copy.render(r); }
+      render(r, write, read, dt, mask){ super.render(r, write, msRT, dt, mask); sceneDepthTex = msRT.depthTexture; r.setRenderTarget(read); this.copy.render(r); }
     }
     composer.addPass(new MSRenderPass());
-  } else composer.addPass(new RenderPass(scene, camera));
-  const sceneDepth = read => msRT ? msRT.depthTexture : read.depthTexture;
+  } else composer.addPass(new (class extends RenderPass {
+    render(r, write, read, dt, mask){ super.render(r, write, read, dt, mask); sceneDepthTex = read.depthTexture; } })(scene, camera));
+  const sceneDepth = read => sceneDepthTex || (msRT ? msRT.depthTexture : read.depthTexture);
   if (Q.ao){
     // GTAO on the main depth buffer; normals are rebuilt from depth. Each frame it reads whichever buffer the scene went into.
     class SceneDepthGTAO extends GTAOPass {
@@ -1994,13 +2004,107 @@ let composer=null, raysPass=null, gradePass=null, aoPass=null, msRT=null;
     aoPass.blendIntensity = 0.95;
     composer.addPass(aoPass);
   }
-  // Crepuscular rays: march each pixel toward the sun's screen position and gather bright sky seen through gaps
+
+  // Volumetric light (Q.vol): per pixel, march from the camera to the scene depth through humid air whose density falls
+  // off with height and drifts with slow noise. Each step gathers sunlight scattered toward the eye (Henyey-Greenstein,
+  // forward g≈0.7) where the sun reaches that point: the real sun shadow map inside the shadow box, the baked canopy map
+  // beyond it; plus blue-grey sky light scaled by canopy openness. The scene behind is dimmed by the transmittance.
+  // Rendered at Q.volScale resolution with interleaved-gradient jitter, then upsampled with depth-aware weights so
+  // trunks keep sharp edges. Replaces the mist sprites, the ray planes and the screen-space god rays; FogExp2 keeps only
+  // the far haze (VOL_FOG).
+  if (Q.vol){
+    const VW = () => Math.max(1, Math.round(W*Q.volScale)), VH = () => Math.max(1, Math.round(H*Q.volScale));
+    class VolumetricPass extends Pass {
+      constructor(){
+        super();
+        this.rt = new THREE.WebGLRenderTarget(VW(), VH(), {type:THREE.HalfFloatType, format:THREE.RGBAFormat, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, depthBuffer:false});
+        this.u = Object.assign({tDepth:{value:null}, uProjInv:{value:new THREE.Matrix4()}, uCamWorld:{value:new THREE.Matrix4()}, uCamPos:{value:new THREE.Vector3()},
+          uShadow:{value:null}, uShadowMat:{value:new THREE.Matrix4()}, uShadowBias:{value:-0.0006}, uHasShadow:{value:0},
+          uSunDir:{value:SUN_DIR}, uSunCol:{value:new THREE.Color()}, uAmbCol:{value:new THREE.Color()}, uTime:windTime,
+          uDensity:{value:VOL.density}, uFall:{value:VOL.fall}, uFloorY:{value:VOL.floorY}, uG:{value:VOL.g}, uMaxDist:{value:VOL.maxDist}}, CANOPY.u);
+        this.march = new FullScreenQuad(new THREE.ShaderMaterial({uniforms:this.u, depthTest:false, depthWrite:false,
+          vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+          fragmentShader:`#define STEPS ${Q.volSteps}
+            uniform sampler2D tDepth; uniform mat4 uProjInv, uCamWorld; uniform vec3 uCamPos;
+            uniform sampler2DShadow uShadow; uniform mat4 uShadowMat; uniform float uShadowBias, uHasShadow;
+            uniform vec3 uSunDir, uSunCol, uAmbCol; uniform float uTime, uDensity, uFall, uFloorY, uG, uMaxDist;
+            ${CANOPY_GLSL}
+            varying vec2 vUv;
+            float vHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)))*43758.5453); }
+            float vNoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+              return mix(mix(vHash(i), vHash(i+vec2(1,0)), f.x), mix(vHash(i+vec2(0,1)), vHash(i+vec2(1,1)), f.x), f.y); }
+            void main(){
+              float d = texture2D(tDepth, vUv).r;
+              vec4 vp = uProjInv*vec4(vUv*2.0 - 1.0, d*2.0 - 1.0, 1.0); vp /= vp.w;
+              vec3 rd = (uCamWorld*vp).xyz - uCamPos; float len = length(rd); rd /= len; len = min(len, uMaxDist);
+              float dt = len/float(STEPS);
+              float t = dt*fract(52.9829189*fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));   // interleaved gradient jitter
+              float c = dot(rd, uSunDir), g2 = uG*uG;
+              float ph = (1.0 - g2)/(12.566371*pow(1.0 + g2 - 2.0*uG*c, 1.5));                             // Henyey-Greenstein
+              float T = 1.0; vec3 L = vec3(0.0);
+              for (int i = 0; i < STEPS; i++){
+                vec3 p = uCamPos + rd*t;
+                float n = vNoise(p.xz*0.045 + vec2(uTime*0.025, uTime*0.012) + p.y*0.07);
+                float dens = uDensity*exp(-max(p.y - uFloorY, 0.0)/uFall)*(0.45 + 1.1*n);
+                vec4 sc = uShadowMat*vec4(p, 1.0); vec2 e = min(sc.xy, 1.0 - sc.xy);
+                float inBox = smoothstep(0.0, 0.08, min(e.x, e.y))*step(sc.z, 1.0)*uHasShadow;
+                float vis = canopySun(p);
+                if (inBox > 0.0) vis = mix(vis, texture(uShadow, vec3(sc.xy, sc.z + uShadowBias)), inBox);
+                vec3 S = uSunCol*(vis*ph) + uAmbCol*mix(uCanopyK.x, 1.0, canopySky(p));
+                float tr = exp(-dens*dt);
+                L += T*S*(1.0 - tr); T *= tr; t += dt;
+              }
+              gl_FragColor = vec4(L, T);
+            }`}));
+        this.uc = {tDiffuse:{value:null}, tVol:{value:this.rt.texture}, tDepth:{value:null}, uVolRes:{value:new THREE.Vector2(VW(), VH())},
+          uNear:{value:camera.near}, uFar:{value:camera.far}};
+        this.comp = new FullScreenQuad(new THREE.ShaderMaterial({uniforms:this.uc, depthTest:false, depthWrite:false,
+          vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+          fragmentShader:`uniform sampler2D tDiffuse, tVol, tDepth; uniform vec2 uVolRes; uniform float uNear, uFar; varying vec2 vUv;
+            float lin(float d){ float z = d*2.0 - 1.0; return 2.0*uNear*uFar/(uFar + uNear - z*(uFar - uNear)); }
+            void main(){
+              vec3 base = texture2D(tDiffuse, vUv).rgb;
+              float z0 = lin(texture2D(tDepth, vUv).r);
+              // depth-aware upsample: the four nearest low-res texels, bilinear weights cut down where their depth differs
+              vec2 st = vUv*uVolRes - 0.5, i0 = floor(st), f = st - i0;
+              vec4 acc = vec4(0.0); float wsum = 0.0;
+              for (int k = 0; k < 4; k++){
+                vec2 o = vec2(float(k - (k/2)*2), float(k/2));
+                vec2 uv = (i0 + o + 0.5)/uVolRes;
+                float zl = lin(texture2D(tDepth, uv).r);
+                float w = (o.x > 0.5 ? f.x : 1.0 - f.x)*(o.y > 0.5 ? f.y : 1.0 - f.y) + 1e-4;
+                w *= 1.0/(1e-3 + abs(zl - z0)/max(z0, 0.1)*8.0);
+                acc += texture2D(tVol, uv)*w; wsum += w;
+              }
+              acc /= wsum;
+              gl_FragColor = vec4(base*acc.a + acc.rgb, 1.0);
+            }`}));
+      }
+      setSize(w, h){ this.rt.setSize(Math.max(1, Math.round(w*Q.volScale)), Math.max(1, Math.round(h*Q.volScale))); this.uc.uVolRes.value.set(this.rt.width, this.rt.height); }
+      render(r, write, read){
+        const u = this.u, depth = sceneDepth(read);
+        u.tDepth.value = depth; this.uc.tDepth.value = depth; this.uc.tDiffuse.value = read.texture;
+        u.uProjInv.value.copy(camera.projectionMatrixInverse); u.uCamWorld.value.copy(camera.matrixWorld); u.uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
+        const sm = sun.shadow.map && sun.shadow.map.depthTexture;
+        u.uShadow.value = sm || null; u.uHasShadow.value = sm ? 1 : 0; u.uShadowMat.value.copy(sun.shadow.matrix);
+        u.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity*VOL.sun);
+        u.uAmbCol.value.copy(VOL.amb).multiplyScalar(VOL.ambI);
+        u.uDensity.value = VOL.density; u.uG.value = VOL.g;
+        r.setRenderTarget(this.rt); this.march.render(r);
+        r.setRenderTarget(this.renderToScreen ? null : write); this.comp.render(r);
+      }
+    }
+    volPass = new VolumetricPass();
+    composer.addPass(volPass);
+  }
+  // Lens flare (and, without Q.vol, screen-space crepuscular rays: march each pixel toward the sun's screen position and
+  // gather bright sky seen through gaps)
   raysPass=new ShaderPass({
     uniforms:{tDiffuse:{value:null}, uSun:{value:new THREE.Vector2(.5,.6)}, uStrength:{value:0}, uThreshold:{value:2.5}, uFlare:{value:0}, uAspect:{value:1.6}},
     vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
     fragmentShader:`uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStrength; uniform float uThreshold; uniform float uFlare; uniform float uAspect; varying vec2 vUv;
       float disc(vec2 p, vec2 c, float r, float soft){ float d=length((p-c)*vec2(uAspect,1.0)); return smoothstep(r, r*soft, d); }
-      #define N ${Q.rays}
+      #define N ${Q.vol ? 1 : Q.rays}
       void main(){
         vec3 base=texture2D(tDiffuse,vUv).rgb;
         vec2 d=(vUv-uSun)/float(N)*0.92; vec2 uv=vUv; float decay=1.0; vec3 acc=vec3(0.0);
@@ -2052,7 +2156,7 @@ let composer=null, raysPass=null, gradePass=null, aoPass=null, msRT=null;
   composer.addPass(new OutputPass());
 }
 const sunNDC=new THREE.Vector3(), camFwd=new THREE.Vector3();
-const RAYS = {strength:0.16, flare:0.12};   // camera-like: faint shafts and ghosts, never a white-out when you look up
+const RAYS = {strength:Q.vol ? 0 : 0.16, flare:0.12};   // camera-like: faint shafts and ghosts, never a white-out when you look up (shafts come from the volumetric pass when Q.vol)
 
 /* ================= Main loop ================= */
 const clock=new THREE.Timer(), fwd=new THREE.Vector3(), right=new THREE.Vector3(), tmpV=new THREE.Vector3();
@@ -2261,7 +2365,7 @@ if (new URLSearchParams(location.search).has('debug')){
   // layout fingerprint: proves appearance changes never moved a seeded tree, rock, log or bird
   const fp = [...T.trunk.map(t=>t.slice(0,3)), ...ROCKS.map(t=>t.slice(0,3)), ...LOGS.map(t=>t.slice(0,3)), ...birds.map(b=>[b.userData.f.ph||0])].flat();
   let hsh = 0; for (const v of fp) hsh = (Math.imul(hsh ^ Math.round(v*1000), 16777619)) >>> 0;
-  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, CANOPY, WET_U, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
+  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, CANOPY, WET_U, VOL, volPass, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
 }
 const hot = window.claude && window.claude.hot;
 function boot(data){
