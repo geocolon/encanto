@@ -391,8 +391,8 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
@@ -448,6 +448,8 @@ scene.background = FOG;
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1700);
 camera.rotation.order = 'YXZ';
 const ANISO = renderer.capabilities.getMaxAnisotropy();
+// Wet-surface kind for the rain (see "Sun shower"): 1 soil and litter, 2 porous (bark, moss, stone), 3 leaves and petals
+const wetKind = (m, k) => { m.userData.wet = k; return m; };
 
 /* ================= Downloaded assets (Poly Haven, CC0): HDR skies and forest-floor PBR maps ================= */
 // One LoadingManager drives the progress line on the start card; Enter stays hidden until everything is in.
@@ -734,8 +736,8 @@ scene.add(sun, sun.target);
 //   canopySun: how much direct sun gets through along SUN_DIR. Used only where the real shadow map doesn't reach
 //              (beyond the shadow box) and for meshes that don't receive shadows, so nothing is darkened twice.
 { const C = THREE.ShaderChunk, dirShadow = 'vDirectionalShadowCoord[ i ] ) : 1.0;';
-  C.shadowmap_pars_vertex = '#ifdef CANOPY_LIGHT\n varying vec3 vCanopyW;\n#endif\n' + C.shadowmap_pars_vertex;
-  C.shadowmap_vertex = `#ifdef CANOPY_LIGHT
+  C.shadowmap_pars_vertex = '#ifdef WORLD_W\n varying vec3 vCanopyW;\n#endif\n' + C.shadowmap_pars_vertex;
+  C.shadowmap_vertex = `#ifdef WORLD_W
     { vec4 cw = vec4(transformed, 1.0);
       #ifdef USE_INSTANCING
         cw = instanceMatrix * cw;
@@ -743,8 +745,15 @@ scene.add(sun, sun.target);
       vCanopyW = (modelMatrix * cw).xyz; }
     #endif
     ` + C.shadowmap_vertex;
-  C.shadowmap_pars_fragment = `#ifdef CANOPY_LIGHT
+  C.shadowmap_pars_fragment = `#ifdef WORLD_W
       varying vec3 vCanopyW;
+    #endif
+    #ifdef WET_SURF
+      uniform float uWet; uniform vec3 uWetPond;
+      // how wet this surface is: the shower's wetness, more at the pond margin
+      float wetness(vec3 w){ return clamp(uWet*(0.8 + 0.45*(1.0 - smoothstep(uWetPond.z*1.05, uWetPond.z*1.7, length(w.xz - uWetPond.xy)))), 0.0, 1.0); }
+    #endif
+    #ifdef CANOPY_LIGHT
       uniform sampler2D uCanopyTop, uCanopySun; uniform mat4 uCanopyTopVP, uCanopySunVP; uniform vec4 uCanopySunPlane, uCanopyK;
       vec2 canopyUV(mat4 vp, vec3 w){ vec4 c = vp*vec4(w, 1.0); return c.xy*0.5 + 0.5; }
       float canopyIn(vec2 uv){ vec2 e = min(uv, 1.0 - uv); return step(0.0, min(e.x, e.y)); }
@@ -776,6 +785,25 @@ scene.add(sun, sun.target);
       }
     #endif
     ` + C.lights_fragment_end;
+  // Wet surfaces (rain): WET_KIND 1 soil, 2 porous (bark, moss, stone), 3 leaves. Applied after every map and per-material
+  // tweak, right before the lighting model reads the material, so barkMaterial() and the ground shader get it too.
+  const wetPhys = `#if defined( WET_SURF ) && defined( WET_KIND )
+      { float wk = wetness(vCanopyW);
+        #if WET_KIND == 1
+          diffuseColor.rgb *= 1.0 - 0.35*wk; roughnessFactor = mix(roughnessFactor, max(roughnessFactor*0.8, 0.62), wk);   // soil and litter: darker, a damp sheen (glossier reads as snow)
+        #elif WET_KIND == 2
+          diffuseColor.rgb *= 1.0 - 0.28*wk; roughnessFactor *= 1.0 - 0.3*wk;                                    // bark, moss, stone: darker, a little less rough
+        #else
+          diffuseColor.rgb *= 1.0 - 0.06*wk; roughnessFactor = mix(roughnessFactor, 0.16, 0.8*wk);               // leaves: a wet film, sharp sky glints
+        #endif
+      }
+    #endif
+    `;
+  C.lights_physical_fragment = wetPhys + C.lights_physical_fragment;
+  C.lights_lambert_fragment = `#if defined( WET_SURF ) && defined( WET_KIND )
+      diffuseColor.rgb *= 1.0 - (WET_KIND == 3 ? 0.06 : 0.3)*wetness(vCanopyW);
+    #endif
+    ` + C.lights_lambert_fragment;
 }
 const SUN_COL = new THREE.Color('#ffd9a0').multiplyScalar(0.5);
 const sunView = {value:new THREE.Vector3()};   // sun direction in camera space, for leaf glow
@@ -847,7 +875,7 @@ function addWind(mat, mode, strength, glow=0, opt={}){
   // Litter and moss trade places through two layers of noise; the trail is clay with a ragged edge; near the pond
   // everything turns dark, wet and glossy. Each set is sampled twice at different scales and angles so tiles never line up.
   const [lD,lN,lA] = groundTex.litter, [mD,mN,mA] = groundTex.moss, [cD,cN,cA] = groundTex.clay;
-  const gmat = new THREE.MeshStandardMaterial({normalMap:lN, roughness:1, metalness:0, envMapIntensity:0.6});
+  const gmat = wetKind(new THREE.MeshStandardMaterial({normalMap:lN, roughness:1, metalness:0, envMapIntensity:0.6}), 1);
   gmat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, {tLD:{value:lD}, tLN:{value:lN}, tLA:{value:lA}, tMD:{value:mD}, tMN:{value:mN}, tMA:{value:mA},
       tCD:{value:cD}, tCN:{value:cN}, tCA:{value:cA}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)}, uTexOK:groundTexOK});
@@ -887,7 +915,7 @@ function addWind(mat, mode, strength, glow=0, opt={}){
         gG.d *= mix(vec3(1.0), vec3(0.42, 0.4, 0.36), gWet);             // wet ground darkens
         vec3 gAlbedo = mix(vec3(0.16, 0.12, 0.08), gG.d, uTexOK);
         diffuseColor.rgb *= gAlbedo;
-        float gRough = mix(0.95, mix(gG.a.g, 0.22, gWet*0.85), uTexOK);  // ARM: R = AO, G = roughness
+        float gRough = mix(0.95, mix(gG.a.g, 0.75, gWet*0.85), uTexOK);  // ARM: R = AO, G = roughness (wet margin: a damp sheen; anything glossier reads as snow at grazing angles)
         float gAO = mix(1.0, gG.a.r, uTexOK);
         vec3 gN = mix(vec3(0.0,0.0,1.0), normalize(vec3(gG.n.xy*mix(1.0, 0.45, gWet), max(gG.n.z, 0.2))), uTexOK);`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gRough;')
@@ -903,7 +931,7 @@ function addWind(mat, mode, strength, glow=0, opt={}){
 const water = new THREE.Mesh(new THREE.CircleGeometry(POND.r*1.12,64), new THREE.MeshStandardMaterial({color:'#1b1a0f', roughness:0.06, metalness:0.35, envMapIntensity:1.4, transparent:true, opacity:0.94}));
 water.rotation.x = -Math.PI/2; water.position.set(POND.x, WATER_Y, POND.z); water.receiveShadow = true; scene.add(water);
 {
-  const padMat = new THREE.MeshStandardMaterial({color:'#3d6a26', roughness:.55, envMapIntensity:.8});
+  const padMat = wetKind(new THREE.MeshStandardMaterial({color:'#3d6a26', roughness:.55, envMapIntensity:.8}), 3);
   const rimMat = new THREE.MeshStandardMaterial({color:'#8a3a2a', roughness:.6});
   const pads=[];
   for(let tries=0; pads.length<20 && tries<400; tries++){
@@ -972,7 +1000,7 @@ const tmpC = new THREE.Color();
 // and along streaks (aMoss, per vertex), broken up by noise. ARM's AO darkens the bark furrows.
 function barkMaterial(set, {tile=1.8, cyl=true, moss=null, scale=[1,1], color='#ffffff', env=0.45}={}){
   const [D,N,A] = set;
-  const m = new THREE.MeshStandardMaterial({map:D, normalMap:N, roughnessMap:A, color, roughness:1, metalness:0, envMapIntensity:env});
+  const m = wetKind(new THREE.MeshStandardMaterial({map:D, normalMap:N, roughnessMap:A, color, roughness:1, metalness:0, envMapIntensity:env}), 2);
   m.onBeforeCompile = sh => {
     const ex = cyl ? `uv*vec2(max(1.0, floor(6.2832*iS.x/${tile.toFixed(2)}+0.5)), iS.y/${tile.toFixed(2)}) + iO` : `uv*iS/${tile.toFixed(2)} + iO`;
     sh.vertexShader = (moss ? 'attribute float aMoss;\nvarying float vMoss;\n' : '') + sh.vertexShader.replace('#include <uv_vertex>', `
@@ -1004,7 +1032,7 @@ const finMat = barkMaterial(BARK.trunk, {tile:1.8, cyl:false, moss:BARK.moss[0]}
 const palmMat = barkMaterial(BARK.palm, {tile:0.9, env:0.35});
 // Fallen logs, root plates, branch stubs and tree-fern stems are almost fully moss-covered
 const mossMat = barkMaterial(BARK.moss, {tile:1.3, env:0.3});
-const stoneMat = new THREE.MeshStandardMaterial({map:stoneTex, bumpMap:stoneTex, bumpScale:0.05, roughness:0.9});
+const stoneMat = wetKind(new THREE.MeshStandardMaterial({map:stoneTex, bumpMap:stoneTex, bumpScale:0.05, roughness:0.9}), 2);
 
 // Shared geometry
 const trunkGeo = (() => { const g=new THREE.CylinderGeometry(0.55,1,1,12,8,true); g.translate(0,0.5,0);
@@ -1270,15 +1298,15 @@ function cutoutDepth(alphaMap){
   d.onBeforeCompile = atlasVertex; d.customProgramCacheKey = () => 'depth-atlas'; return d;
 }
 // Leaves: double-sided, alpha-tested (no sorting), slightly glossy like a waxy tropical leaf, glowing when backlit
-const foliageMat = (D, A, rough, env) => new THREE.MeshStandardMaterial({map:D, alphaMap:A, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:rough, envMapIntensity:env});
+const foliageMat = (D, A, rough, env) => wetKind(new THREE.MeshStandardMaterial({map:D, alphaMap:A, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:rough, envMapIntensity:env}), 3);
 instanced(trunkGeo, trunkMat, T.trunk.filter(t=>!t.kind), {cast:true, receive:true});
 instanced(trunkGeo, palmMat, T.trunk.filter(t=>t.kind==='palm'), {cast:true, receive:true});
 instanced(trunkGeo, mossMat, T.trunk.filter(t=>t.kind==='fern'), {cast:true, receive:true});
 instanced(finGeo, finMat, T.fin, {cast:true, receive:true});
 instanced(branchGeo, barkMat, T.branch, {cast:true});
-instanced(new THREE.CylinderGeometry(1,1,1,5).translate(0,0.5,0), new THREE.MeshStandardMaterial({color:'#4a3f2a', roughness:.9}), T.vine, {cast:false});
+instanced(new THREE.CylinderGeometry(1,1,1,5).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({color:'#4a3f2a', roughness:.9}), 2), T.vine, {cast:false});
 // heliconia bracts: natural waxy red, no glow
-instanced(new THREE.ConeGeometry(1,1,4).translate(0,0.5,0), new THREE.MeshStandardMaterial({roughness:.4, envMapIntensity:.6}), T.flower, {cast:false, receive:true, colors:true});
+instanced(new THREE.ConeGeometry(1,1,4).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({roughness:.4, envMapIntensity:.6}), 3), T.flower, {cast:false, receive:true, colors:true});
 const leafMat = addWind(foliageMat(FOLIAGE.cardD, FOLIAGE.cardA, 0.55, 0.8), 'leaf', 0.06, 1.0, {atlas:true, crown:true});
 const leaves = instanced(cardGeo, leafMat, T.leaf, {cast:true, receive:true, colors:true}); leaves.customDepthMaterial = cutoutDepth(FOLIAGE.cardA);
 const frondMat = addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.6, 0.7), 'frond', 0.12, 0.9, {atlas:true});
@@ -1289,10 +1317,10 @@ const bigLeaves = instanced(bigLeafGeo, bigMat, T.bigLeaf, {cast:Q.frondShadow, 
 const monsteraGeo = (() => { const g=new THREE.PlaneGeometry(0.8,1.05,4,6); g.translate(0,0.52,0); const p=g.attributes.position; for(let i=0;i<p.count;i++){ const x=p.getX(i), y=p.getY(i); p.setZ(i,0.14*y*y - 0.2*x*x); } g.computeVertexNormals(); return g; })();
 const monMat = addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.35, 1.0), 'frond', 0.05, 0.8, {atlas:true});
 const monLeaves = instanced(monsteraGeo, monMat, T.monstera, {cast:Q.frondShadow, receive:true, colors:true}); monLeaves.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
-instanced(new THREE.CylinderGeometry(1,1.3,1,5).translate(0,0.5,0), new THREE.MeshStandardMaterial({color:'#4d6a32', roughness:.6}), T.stem, {receive:true});
+instanced(new THREE.CylinderGeometry(1,1.3,1,5).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({color:'#4d6a32', roughness:.6}), 3), T.stem, {receive:true});
 for (const ty of FLOWER_TYPES){
   // orchids and ground flowers: no self-glow, slightly muted, so they read as real petals in shade
-  const mat=new THREE.MeshStandardMaterial({map:ty.tex, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.5, color:'#d9d2cc', envMapIntensity:0.6});
+  const mat=wetKind(new THREE.MeshStandardMaterial({map:ty.tex, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.5, color:'#d9d2cc', envMapIntensity:0.6}), 3);
   instanced(cardGeo, mat, ty.list, {receive:true});
 }
 const curtainGeo = new THREE.PlaneGeometry(1,1); curtainGeo.translate(0,-0.5,0);
@@ -1345,7 +1373,7 @@ function grassLayer(N, H, inner, sMul, oldBlades){
   const A=(n,arr)=>geo.setAttribute(n,new THREE.InstancedBufferAttribute(arr,arr.length/N));
   A('aOffset',off); A('aRot',rot); A('aSize',size); A('aShape',shape); A('aTint',tint); A('aCell',cell);
   geo.instanceCount=N;
-  const mat=new THREE.MeshLambertMaterial({map:FOLIAGE.leafD, alphaMap:FOLIAGE.leafA, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide});
+  const mat=wetKind(new THREE.MeshLambertMaterial({map:FOLIAGE.leafD, alphaMap:FOLIAGE.leafA, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide}), 3);
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, {uTime:windTime, uCam:grassCam, uHalf:{value:H}, uInner:{value:inner}, uWater:{value:WATER_Y}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)},
       uSunView:sunView, uSunCol:{value:SUN_COL}});
@@ -1403,7 +1431,7 @@ instanced(branchGeo, mossMat, STUBS, {cast:true, receive:true});
   const g=new THREE.IcosahedronGeometry(1,1); const p=g.attributes.position;
   for(let i=0;i<p.count;i++){ const k=1+Math.sin(p.getX(i)*7+p.getZ(i)*5)*0.12; p.setXYZ(i,p.getX(i)*k,Math.max(-0.2,p.getY(i)),p.getZ(i)*k); }
   g.computeVertexNormals();
-  instanced(g, new THREE.MeshStandardMaterial({color:'#c4d29a', map:BARK.moss[0], normalMap:BARK.moss[1], roughness:1, envMapIntensity:0.3}), MOSS, {receive:true});
+  instanced(g, wetKind(new THREE.MeshStandardMaterial({color:'#c4d29a', map:BARK.moss[0], normalMap:BARK.moss[1], roughness:1, envMapIntensity:0.3}), 2), MOSS, {receive:true});
 }
 
 /* Mossy surface roots snaking out from the giants, several crossing the trail */
@@ -1427,7 +1455,7 @@ instanced(branchGeo, mossMat, STUBS, {cast:true, receive:true});
 
 /* Curved lianas draped near the trail */
 {
-  const vineMat = new THREE.MeshStandardMaterial({color:'#4d5228', roughness:.9});
+  const vineMat = wetKind(new THREE.MeshStandardMaterial({color:'#4d5228', roughness:.9}), 2);
   for(let i=0;i<Q.lianas;i++){
     const z=rr(-155,160), side=rand()<.5?-1:1, x0=pathX(z)+side*rr(4,8), x1=x0+side*rr(-6,2), y0=height(x0,z)+rr(16,24);
     const sag=rr(3,9), pts=[new THREE.Vector3(x0,y0,z), new THREE.Vector3((x0+x1)/2, y0-sag-rr(2,6), z+rr(-3,3)), new THREE.Vector3(x1, height(x1,z)+rr(0,6), z+rr(-4,4))];
@@ -1503,7 +1531,14 @@ const seeds = [120,80,40,0,-45,-85,-125].map((z,i)=>{
 });
 
 /* ================= Sun shower: slow rain under a clear sky ================= */
-const rainU = {uTime:windTime, uCam:{value:new THREE.Vector3()}, uHalf:{value:26}, uHeight:{value:30}, uSpeed:{value:5.5}, uWind:{value:new THREE.Vector2(0.18,0.06)}, uColor:{value:new THREE.Color(1.25,1.2,1.08)}, uOpacity:{value:0.32}};
+// The shower never stops (uOpacity is constant), so the valley is steadily wet; uWet follows the rain's opacity with a
+// slow lag (wetting and drying), so any future change in the rain carries into the surfaces. Read by the wet-surface
+// ShaderChunk patch in every material tagged with wetKind().
+const RAIN_OPACITY = 0.32, WET_MAX = 0.7;
+const WET_U = {uWet:{value:0}, uWetPond:{value:new THREE.Vector3(POND.x, POND.z, POND.r)}};
+const wetTarget = () => Q.wet ? Math.min(1, rainU.uOpacity.value/RAIN_OPACITY)*WET_MAX : 0;
+const rainU = {uTime:windTime, uCam:{value:new THREE.Vector3()}, uHalf:{value:26}, uHeight:{value:30}, uSpeed:{value:5.5}, uWind:{value:new THREE.Vector2(0.18,0.06)}, uColor:{value:new THREE.Color(1.25,1.2,1.08)}, uOpacity:{value:RAIN_OPACITY}};
+WET_U.uWet.value = wetTarget();
 {
   const N=Q.rain, quad=new THREE.InstancedBufferGeometry();
   quad.setAttribute('position', new THREE.Float32BufferAttribute([-0.5,0,0, 0.5,0,0, -0.5,1,0, 0.5,1,0],3));
@@ -1547,16 +1582,20 @@ const ripples=[];
 // from straight above and from the sun into small float targets. Alpha multiplies into transmittance (overlapping
 // crowns get darker), and a max-blend keeps the top of the first leaves (height from above, distance from the sun).
 // A Gaussian blur turns that into soft openness 0..1 plus the averaged crown top. The ShaderChunk patch in
-// "Sky and light" reads it in every lit material (canopyLit), so no material is edited one by one.
+// "Sky and light" reads it in every lit material (worldLit), so no material is edited one by one.
 const CANOPY = { u: { uCanopyTop:{value:null}, uCanopySun:{value:null}, uCanopyTopVP:{value:new THREE.Matrix4()}, uCanopySunVP:{value:new THREE.Matrix4()},
   uCanopySunPlane:{value:new THREE.Vector4()}, uCanopyK:{value:new THREE.Vector4(0.4, 0.04, 0.8, 0)} }, baked:false };   // K: indirect floor, sun floor, openness gamma
-function canopyLit(m){
-  if (!m || m.userData.canopy || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
-  m.userData.canopy = true;
-  const ob = m.onBeforeCompile, key = m.customProgramCacheKey();
-  m.onBeforeCompile = function(sh, r){ ob.call(this, sh, r); Object.assign(sh.uniforms, CANOPY.u);
-    sh.vertexShader = '#define CANOPY_LIGHT\n' + sh.vertexShader; sh.fragmentShader = '#define CANOPY_LIGHT\n' + sh.fragmentShader; };
-  m.customProgramCacheKey = () => key + '|canopy';
+// Opt every lit material in to the world-space patches: canopy light (Q.canopyLight) and wet surfaces (Q.wet, with the
+// material's userData.wet kind: 1 soil, 2 porous, 3 leaf; see wetKind()). Done once at start-up, before shaders compile.
+function worldLit(m){
+  if (!m || m.userData.worldLit || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
+  const defs = (Q.canopyLight ? '#define CANOPY_LIGHT\n' : '') + (Q.wet ? '#define WET_SURF\n' + (m.userData.wet ? `#define WET_KIND ${m.userData.wet}\n` : '') : '');
+  if (!defs) return;
+  m.userData.worldLit = true;
+  const ob = m.onBeforeCompile, key = m.customProgramCacheKey(), D = '#define WORLD_W\n' + defs;
+  m.onBeforeCompile = function(sh, r){ ob.call(this, sh, r); Object.assign(sh.uniforms, CANOPY.u, WET_U);
+    sh.vertexShader = D + sh.vertexShader; sh.fragmentShader = D + sh.fragmentShader; };
+  m.customProgramCacheKey = () => key + '|' + D;
 }
 function bakeCanopy(){
   if (!Q.canopyLight) return;
@@ -1606,7 +1645,7 @@ function bakeCanopy(){
   renderer.setRenderTarget(prevRT); renderer.setClearColor(prevC, prevA);
   CANOPY.u.uCanopyTop.value = CANOPY.top.texture; CANOPY.u.uCanopySun.value = CANOPY.sun.texture;
   raw.dispose(); mats.forEach(m => m.dispose()); blurMat.dispose(); quad.geometry.dispose();
-  if (!CANOPY.baked){ CANOPY.baked = true; scene.traverse(o => { if (o.material) [].concat(o.material).forEach(canopyLit); }); }
+  CANOPY.baked = true;
 }
 
 /* ================= Animals ================= */
@@ -2076,6 +2115,7 @@ function frame(ts){
   // Ambient world
   water.position.y = WATER_Y + Math.sin(t*0.7)*0.03;
   rainU.uCam.value.copy(camera.position);
+  WET_U.uWet.value += (wetTarget() - WET_U.uWet.value)*Math.min(1, dt*0.05);
   for (const r of ripples){
     const u=r.userData; u.t+=dt;
     if (u.t>u.dur){ u.t=0; const a=rand()*6.283, rad=Math.sqrt(rand())*POND.r*0.95; r.position.set(POND.x+Math.cos(a)*rad, WATER_Y+0.03, POND.z+Math.sin(a)*rad); }
@@ -2204,7 +2244,9 @@ loadManager.onLoad = () => { assetsDone=true; if (running){ applyAssets(); bakeC
 setTimeout(() => { if (!assetsDone){ assetsDone=true; maybeStart(); } }, 60000);
 function maybeStart(){
   if (!built || !assetsDone || running) return;
-  running = true; applyAssets(); bakeCanopy();
+  running = true; applyAssets();
+  scene.traverse(o => { if (o.material) [].concat(o.material).forEach(worldLit); });
+  bakeCanopy();
   $('loading').textContent = 'Almost there…';
   const go = () => {
     $('loading').hidden=true; $('loadbar').hidden=true; $('enter').hidden=false;
@@ -2219,7 +2261,7 @@ if (new URLSearchParams(location.search).has('debug')){
   // layout fingerprint: proves appearance changes never moved a seeded tree, rock, log or bird
   const fp = [...T.trunk.map(t=>t.slice(0,3)), ...ROCKS.map(t=>t.slice(0,3)), ...LOGS.map(t=>t.slice(0,3)), ...birds.map(b=>[b.userData.f.ph||0])].flat();
   let hsh = 0; for (const v of fp) hsh = (Math.imul(hsh ^ Math.round(v*1000), 16777619)) >>> 0;
-  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, CANOPY, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
+  window.__enc = {player, height, WATER_Y, renderer, scene, camera, Q, RAYS, composer, aoPass, sun, CANOPY, WET_U, layout:{hash:hsh, trunks:T.trunk.length, rocks:ROCKS.length, logs:LOGS.length, colliders:colliders.length}};
 }
 const hot = window.claude && window.claude.hot;
 function boot(data){
