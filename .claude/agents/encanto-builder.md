@@ -28,23 +28,25 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 
 ## Map of index.html
 
-- `Q` quality presets (phone vs desktop): counts of trees, grass, rocks, birds, rain, fog density, bloom, shadow size. Most "more / less / denser" requests are a change here.
+- `Q` quality presets (phone vs desktop): counts of trees, grass, rocks, birds, rain, fog density, bloom, shadow size, and the stage-3 switches `canopyLight`/`canopyRes`, `msaa`, `wet`, `vol`/`volScale`/`volSteps` (the low-end tier overrides `msaa:0`). Most "more / less / denser" requests are a change here.
 - `height(x,z)` terrain shape, `pathX(z)` the trail line, `GAPS` the sky window, `POND`, `WAYSTONE`.
 - Import map and module imports at the top of the game script (three 0.186.1 and `three/addons/`). The splash and details-menu scripts are classic scripts so they work even if the CDN fails.
 - Asset loading: `THREE.LoadingManager` drives the "Loading the forest…" progress on the start card; Enter appears only once assets have loaded and shaders have compiled.
 - Quality tiers: phone / low-end / desktop detection, overridable with `?quality=high` or `?quality=low`.
 - Procedural textures: `makeTex(...)` only for stone (`stoneTex`), flowers, morpho wings (`morphoTex`), `dotTex`, `rayTex`. Retired canvases (leaf litter, bark, leaves, fronds, big leaf, monstera, vine curtains) are `burnTex(...)` no-ops kept for the seeded `rand()` order.
 - Scanned materials: `barkMaterial(set, opts)` with `BARK` sets (Poly Haven bark, moss, palm PBR); foliage from `FOLIAGE` atlases + `LEAF_CELLS`/`CARD_CELLS` (built by `scripts/build-foliage.py`), picked per instance via `aCell`.
-- Sky and light: `SUN_DIR`, HDRI environment (PMREM) and HDRI sky, `sun` (directional light, shadow box that follows the player), hemisphere light. Light intensities are in physical units.
+- Sky and light: `SUN_DIR`, HDRI environment (PMREM) and HDRI sky, `sun` (directional light, shadow box that follows the player), hemisphere light. Light intensities are in physical units; exposure 1.35 with canopy light. Global `THREE.ShaderChunk` patches live here: the shadow-box edge fade, `CANOPY_GLSL` (canopy light: indirect dimmed/greened by `canopySky`, sun beyond the shadow box by `canopySun`) and the wet-surface patch (`uWet`, per-material `wetKind(m, 1 soil | 2 porous | 3 leaf)`). Materials opt in through `worldLit()` at start-up, which adds the defines and uniforms.
+- Canopy light: `bakeCanopy()` (called from `maybeStart`) renders the crown leaves and palm fronds from above and from the sun into `CANOPY.top`/`CANOPY.sun` (openness + crown height/depth), blurred; tune with `CANOPY.u.uCanopyK` (indirect floor, sun floor, openness gamma).
 - Forest floor: Poly Haven PBR ground textures blended by noise, wetter near the pond.
 - `addWind(mat, mode, strength, glow)`: shared wind and backlit-leaf shader.
 - Mountain ring (360° horizon) with aerial-perspective haze.
 - Rainforest layers: `giant`, `canopyTree`, `sapling`, `palm`, `fern`, `treeFern`, `bigLeafPlant`, `monsteraPlant`, `climbingMonstera`, `vineCurtains`, `hangVines`, `orchidSpray`, `bloomClump`, `boulder`, `fallenTree`.
 - `grassLayer(N, half, inner, wMul, hMul)`: GPU grass that wraps around the player (near and mid layers). Its shader has its own copy of the terrain formula in `terrainH`; if you change `height()` or `pathX()`, change `terrainH`/`gPathX` to match.
-- Sun shower: `rainU` uniforms (speed, wind, opacity) and pond `ripples`.
+- Sun shower: `rainU` uniforms (speed, wind, opacity; constant, the shower never stops), `WET_U.uWet` (follows the rain opacity, `WET_MAX` 0.7) and pond `ripples`.
 - Animals: `SPECIES` table and `makeBird`, `trailFlight` flight plans, hummingbirds, morphos, toucans, capybaras.
 - Audio: `startAudio()` (cicadas, rain hiss, leaf patter, drips) and `call()` (bird calls).
-- Camera pipeline: RenderPass, GTAO (desktop only), god rays + lens flare (`raysPass`), bloom, film grade (`gradePass`), OutputPass last. Tone mapping is ACES Filmic.
+- Camera pipeline: scene render (desktop: `MSRenderPass` into the 4x MSAA `msRT`, copied into the composer; canvas has no antialias; alpha-cut foliage uses `alphaToCoverage` via `A2C`), GTAO (desktop only), `VolumetricPass` (`volPass`: ray-marched sun shafts and haze from the shadow map + canopy map, tuned in `VOL`; FogExp2 kept at `VOL_FOG` 0.5 of `Q.fog`), lens flare (`raysPass`; its screen-space rays only run when `Q.vol` is off), bloom, film grade (`gradePass`), OutputPass last. Tone mapping is ACES Filmic. The mist sprites and ray planes are still generated (seed order) but only added to the scene when `Q.vol` is off.
+- Measuring: `scripts/shots.sh OUT_DIR [high,low,phone]` saves fixed-viewpoint PNGs (outside the repo) and prints frame/render times and the layout hash; `SHOTS_EVAL`/`SHOTS_VIEWS` env vars for tuning. Timings on the dev machine (Intel Iris iGPU) vary about +-25% run to run: compare A/B in alternating runs.
 - Player, input (keyboard, mouse, touch joystick, Run/Jump buttons), HUD compass.
 
 ## Rules

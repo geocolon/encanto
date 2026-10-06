@@ -23,7 +23,7 @@ Everything is built in code inside a single `index.html`: terrain, trees, grass,
 - Moss-covered boulders and fallen trees, blue-green grass across the forest floor
 - Scarlet, blue-and-yellow, hyacinth and red-and-green macaws, parakeets, troupials, tanagers, hummingbirds, toucans, blue morphos and capybaras
 - A slow sun shower with pond ripples and synthesized rain, bird and insect sounds
-- A 360° ring of misty mountains, god rays and a warm lens flare
+- A 360° ring of misty mountains, a dark green understory lit by how open the canopy is, ray-marched sun shafts and humid haze, rain-wet bark, soil and leaves, and a warm lens flare
 
 ## Run it locally
 
