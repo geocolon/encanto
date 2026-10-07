@@ -746,6 +746,8 @@ const CANOPY_GLSL = `
       float canopyIn(vec2 uv){ vec2 e = min(uv, 1.0 - uv); return step(0.0, min(e.x, e.y)); }
       float canopySky(vec3 w){ vec2 uv = canopyUV(uCanopyTopVP, w); vec2 t = texture2D(uCanopyTop, uv).rg;
         float o = mix(pow(t.r, uCanopyK.z), 1.0, smoothstep(t.g - 6.0, t.g + 0.5, w.y));   // the top of a crown is in the open
+        float tx = abs(w.x - (sin(w.z*0.012)*3.5 + sin(w.z*0.05)*0.8));                     // distance from the trail (pathX)
+        o = max(o, uCanopyK.w*(1.0 - smoothstep(2.5, 8.0, tx)));                             // the trail is a corridor in the forest: more sky
         return mix(1.0, o, canopyIn(uv)); }
       float canopySun(vec3 w){ vec2 uv = canopyUV(uCanopySunVP, w); vec2 t = texture2D(uCanopySun, uv).rg;
         float d = dot(w, uCanopySunPlane.xyz) + uCanopySunPlane.w;                           // metres from the bake plane along the sun ray
@@ -798,7 +800,11 @@ const CANOPY_GLSL = `
   const wetPhys = `#if defined( WET_SURF ) && defined( WET_KIND )
       { float wk = wetness(vCanopyW);
         #if WET_KIND == 1
-          diffuseColor.rgb *= 1.0 - 0.35*wk; roughnessFactor = mix(roughnessFactor, max(roughnessFactor*0.8, 0.62), wk);   // soil and litter: darker, a damp sheen (glossier reads as snow)
+          #ifndef WET_SOIL_DARK
+            #define WET_SOIL_DARK 0.35
+            #define WET_SOIL_ROUGH 0.62
+          #endif
+          diffuseColor.rgb *= 1.0 - WET_SOIL_DARK*wk; roughnessFactor = mix(roughnessFactor, max(roughnessFactor*0.8, WET_SOIL_ROUGH), wk);   // soil and litter: darker, a damp sheen (glossier reads as snow)
         #elif WET_KIND == 2
           diffuseColor.rgb *= 1.0 - 0.28*wk; roughnessFactor *= 1.0 - 0.3*wk;                                    // bark, moss, stone: darker, a little less rough
         #else
@@ -888,7 +894,8 @@ function addWind(mat, mode, strength, glow=0, opt={}){
     Object.assign(sh.uniforms, {tLD:{value:lD}, tLN:{value:lN}, tLA:{value:lA}, tMD:{value:mD}, tMN:{value:mN}, tMA:{value:mA},
       tCD:{value:cD}, tCN:{value:cN}, tCA:{value:cA}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)}, uTexOK:groundTexOK});
     sh.vertexShader = 'attribute float aPath;\nvarying float vPath;\nvarying vec3 vGP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vPath = aPath; vGP = position;');
-    sh.fragmentShader = (Q.groundDetail ? '#define GROUND_DETAIL\n' : '') + `uniform sampler2D tLD, tLN, tLA, tMD, tMN, tMA, tCD, tCN, tCA; uniform vec3 uPond; uniform float uTexOK;
+    // wet trail clay: compacted, it holds a film of water and shines rather than going dark (gwC is the clay weight)
+    sh.fragmentShader = (Q.groundDetail ? '#define GROUND_DETAIL\n' : '') + '#define WET_SOIL_DARK (0.35 - 0.25*gwC)\n#define WET_SOIL_ROUGH (0.62 - 0.2*gwC)\n' + `uniform sampler2D tLD, tLN, tLA, tMD, tMN, tMA, tCD, tCN, tCA; uniform vec3 uPond; uniform float uTexOK;
       varying float vPath; varying vec3 vGP;
       float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
       float gNoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -1065,14 +1072,34 @@ const T = {trunk:[], fin:[], branch:[], leaf:[], frond:[], palmFrond:[], bigLeaf
 // cell: atlas rect for this instance; cn: crown normal (leaf cards are lit as part of their crown's volume)
 function put(list, x,y,z, rx,ry, sx,sy,sz, col, cell, cn){ list.push([x,y,z,rx,ry,sx,sy,sz,col,cell,cn]); }
 const CROWN_KINDS = ['broad','broad','small','small','pachira'];   // canopy species mix: simple-leaved trees dominate
+// Sun gaps: scattered holes in the crowns, lined up along SUN_DIR so a sun ray passes every crown layer through the
+// same hole. Leaf cards inside a hole are not placed and cards at its edge are shrunk so they don't close it (their
+// rand() calls still run, so the seeded layout doesn't move). The shadow map turns the holes into sun flecks on the
+// floor and the volumetric pass into shafts.
+// cell: hole grid spacing in the plane across the sun (m); p: chance a cell has a hole; r: mean hole radius (m)
+const SUN_GAP = {cell:10, p:0.75, r:1.9};
+const SUN_GU = new THREE.Vector3().crossVectors(SUN_DIR, new THREE.Vector3(0,1,0)).normalize(), SUN_GV = new THREE.Vector3().crossVectors(SUN_GU, SUN_DIR);
+const gapHash = (i,j,k) => { const h = Math.sin(i*127.1 + j*311.7 + k*74.7)*43758.5453; return h - Math.floor(h); };
+function sunGapDist(x,y,z){   // distance (m, across the sun) from the edge of the nearest hole; negative inside it
+  const a = x*SUN_GU.x + y*SUN_GU.y + z*SUN_GU.z, b = x*SUN_GV.x + y*SUN_GV.y + z*SUN_GV.z, C = SUN_GAP.cell;
+  const i0 = Math.floor(a/C), j0 = Math.floor(b/C);
+  let d = 1e9;
+  for (let i=i0-1; i<=i0+1; i++) for (let j=j0-1; j<=j0+1; j++){
+    if (gapHash(i,j,1) > SUN_GAP.p) continue;
+    d = Math.min(d, Math.hypot(a - (i + gapHash(i,j,2))*C, b - (j + gapHash(i,j,3))*C) - SUN_GAP.r*(0.5 + gapHash(i,j,4)));
+  }
+  return d;
+}
 function crownCluster(cx,cy,cz,R,ry,n,size,kind=pick2(CROWN_KINDS)){
   const cell = CARD_CELLS[kind];
   for(let i=0;i<n;i++){
     const u=rand()*6.283, v=Math.acos(rr(-0.4,1)), r=R*(0.55+0.45*Math.sqrt(rand()));
-    const s=size*rr(0.75,1.2)*1.4, lx=cx+Math.cos(u)*Math.sin(v)*r, lz=cz+Math.sin(u)*Math.sin(v)*r, ly=cy+Math.cos(v)*r*ry;
+    let s=size*rr(0.75,1.2)*1.4; const lx=cx+Math.cos(u)*Math.sin(v)*r, lz=cz+Math.sin(u)*Math.sin(v)*r, ly=cy+Math.cos(v)*r*ry;
     const nx=lx-cx, ny=(ly-cy)/(ry*ry)+R*0.25, nz=lz-cz, nl=Math.hypot(nx,ny,nz)||1;
-    put(T.leaf, lx, ly, lz, rand()*6.283, rand()*6.283, s,s,s,
-      tmpC.setRGB(rr(.78,1),rr(.82,1),rr(.7,.95)).clone(), cell, [nx/nl,ny/nl,nz/nl]);
+    const rx=rand()*6.283, ryy=rand()*6.283, col=tmpC.setRGB(rr(.78,1),rr(.82,1),rr(.7,.95)).clone();
+    const gd = sunGapDist(lx, ly, lz);                      // a card covers about 0.6*s around its centre
+    if (gd < 0.6*s){ if (gd < 0.25*s) continue; s = gd/0.6; }
+    put(T.leaf, lx, ly, lz, rx, ryy, s,s,s, col, cell, [nx/nl,ny/nl,nz/nl]);
   }
 }
 // Emergent giants (kapok-like) with buttress roots and umbrella crowns
@@ -1592,7 +1619,7 @@ const ripples=[];
 // A Gaussian blur turns that into soft openness 0..1 plus the averaged crown top. The ShaderChunk patch in
 // "Sky and light" reads it in every lit material (worldLit), so no material is edited one by one.
 const CANOPY = { u: { uCanopyTop:{value:null}, uCanopySun:{value:null}, uCanopyTopVP:{value:new THREE.Matrix4()}, uCanopySunVP:{value:new THREE.Matrix4()},
-  uCanopySunPlane:{value:new THREE.Vector4()}, uCanopyK:{value:new THREE.Vector4(0.4, 0.04, 0.8, 0)} }, baked:false };   // K: indirect floor, sun floor, openness gamma
+  uCanopySunPlane:{value:new THREE.Vector4()}, uCanopyK:{value:new THREE.Vector4(0.5, 0.04, 0.8, 0.35)} }, baked:false };   // K: indirect floor, sun floor, openness gamma, trail-corridor openness
 // Opt every lit material in to the world-space patches: canopy light (Q.canopyLight) and wet surfaces (Q.wet, with the
 // material's userData.wet kind: 1 soil, 2 porous, 3 leaf; see wetKind()). Done once at start-up, before shaders compile.
 function worldLit(m){
@@ -1643,6 +1670,7 @@ function bakeCanopy(){
     cam.lookAt(0, 0, 0); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
     vp.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     mats.forEach(m => m.uniforms.uSunView.value = sunView ? 1 : 0);
+    blurMat.uniforms.uTexel.value = (sunView ? 1 : 2)/N;   // the sun map is blurred half as far, so small crown gaps (SUN_GAP) survive as flecks and shafts
     renderer.setRenderTarget(raw); renderer.setClearColor(new THREE.Color(-1e4, -1e4, -1e4), 1); renderer.clear(true, false, false);
     renderer.render(bake, cam);
     renderer.setRenderTarget(out); renderer.render(quadScene, cam);
