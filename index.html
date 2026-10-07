@@ -393,8 +393,8 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true, vol:true, volScale:0.25, volSteps:12, plantLod:12, vineSeg:6}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true, vol:true, volScale:0.5, volSteps:24, plantLod:22, vineSeg:10};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true, vol:true, volScale:0.25, volSteps:12, plantLod:12, vineSeg:6, seedlings:0.3}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true, vol:true, volScale:0.5, volSteps:24, plantLod:22, vineSeg:10, seedlings:0.3};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
@@ -699,6 +699,34 @@ const FLOWER_TYPES = [
   {tex:makeTex(256,256,(g)=>{ for(let i=0;i<46;i++){ const a=rand()*6.283, r=Math.sqrt(rand())*88, x=128+Math.cos(a)*r, y=128+Math.sin(a)*r, c=pick(['#ff3b1f','#ff6a13','#f2261b','#ff8c1a']);
      for(let k=0;k<4;k++) petal(g,x,y,k*1.5708+a,16,6,c,c); } }), size:[.22,.32], where:'ground'},   // ixora cluster
 ];
+// Banana-like leaf of the heliconias: a long petiole, then an oblong blade with a pale midrib, dense parallel veins
+// running out to the margin, wind tears along the veins and a dry edge. Drawn without random numbers (sin hashes), so
+// the seeded layout is untouched. Base of the petiole at the bottom of the texture.
+const bananaTex = makeTex(256,1024,(g,w,h)=>{
+  const cx=w/2, b0=h*0.6, b1=10, hw=t=>w*0.47*Math.pow(Math.sin(Math.PI*Math.min(1, 0.08+t*0.95)), 0.42);   // t: 0 at the blade base .. 1 at the tip
+  const hs=(i,k)=>{ const v=Math.sin(i*127.1+k*311.7)*43758.5453; return v-Math.floor(v); };
+  g.fillStyle='#3d5e22'; g.fillRect(cx-5, b0-4, 10, h-b0+4);                                  // petiole
+  const gr=g.createLinearGradient(0,b0,0,b1); gr.addColorStop(0,'#2a5a1c'); gr.addColorStop(0.5,'#3c7a29'); gr.addColorStop(1,'#4a8a31');
+  g.fillStyle=gr; g.beginPath(); g.moveTo(cx, b0);
+  for (let i=0;i<=60;i++){ const t=i/60; g.lineTo(cx+hw(t), b0+(b1-b0)*t); }
+  for (let i=60;i>=0;i--){ const t=i/60; g.lineTo(cx-hw(t), b0+(b1-b0)*t); }
+  g.closePath(); g.fill();
+  g.save(); g.clip();
+  const sh=g.createLinearGradient(0,0,w,0); sh.addColorStop(0,'rgba(10,30,5,.28)'); sh.addColorStop(.42,'rgba(0,0,0,0)'); sh.addColorStop(.58,'rgba(0,0,0,0)'); sh.addColorStop(1,'rgba(10,30,5,.28)');
+  g.fillStyle=sh; g.fillRect(0,0,w,h);                                                          // darker toward the margins
+  for (let y=b0-3; y>b1; y-=3.2){ const k=(y|0); g.strokeStyle=`rgba(${hs(k,1)<.5?'190,225,150':'20,45,12'},${0.12+0.1*hs(k,2)})`; g.lineWidth=1;
+    for (const sd of [-1,1]){ g.beginPath(); g.moveTo(cx+sd*4, y); g.quadraticCurveTo(cx+sd*w*0.25, y-9, cx+sd*w*0.5, y-20); g.stroke(); } }   // parallel veins, curving toward the tip
+  g.strokeStyle='rgba(120,90,40,.55)'; g.lineWidth=5;                                             // dry, browned margin
+  g.beginPath(); for (let i=0;i<=60;i++){ const t=i/60; g.lineTo(cx+hw(t), b0+(b1-b0)*t); } g.stroke();
+  g.beginPath(); for (let i=0;i<=60;i++){ const t=i/60; g.lineTo(cx-hw(t), b0+(b1-b0)*t); } g.stroke();
+  g.restore();
+  g.strokeStyle='#b9cf8a'; g.lineWidth=7; g.beginPath(); g.moveTo(cx,b0); g.lineTo(cx,b1+6); g.stroke();   // midrib
+  g.strokeStyle='rgba(60,90,30,.6)'; g.lineWidth=2; g.beginPath(); g.moveTo(cx+3,b0); g.lineTo(cx+2,b1+6); g.stroke();
+  g.globalCompositeOperation='destination-out';                                                  // tears along the veins, from the margin in
+  for (let i=0;i<14;i++){ const t=0.12+0.8*hs(i,3), sd=hs(i,4)<.5?-1:1, y=b0+(b1-b0)*t, d=w*(0.12+0.3*hs(i,5));
+    g.beginPath(); g.moveTo(cx+sd*(w*0.5+2), y-22); g.lineTo(cx+sd*(w*0.5-d), y-22+d*0.45); g.lineTo(cx+sd*(w*0.5+2), y-18); g.closePath(); g.fill(); }
+  g.globalCompositeOperation='source-over';
+});
 // Blue morpho wing
 const morphoTex = makeTex(128,128,(g,w,h)=>{
   g.beginPath(); g.moveTo(0,h*0.45); g.bezierCurveTo(w*0.5,h*0.05,w*1.0,h*0.05,w*0.95,h*0.42); g.bezierCurveTo(w*0.9,h*0.6,w*0.75,h*0.98,w*0.35,h*0.95); g.bezierCurveTo(w*0.15,h*0.9,0,h*0.7,0,h*0.45); g.closePath();
@@ -941,10 +969,10 @@ function lodFade(mat, rU, near, depth=false){
   const gmat = wetKind(new THREE.MeshStandardMaterial({normalMap:lN, roughness:1, metalness:0, envMapIntensity:0.6}), 1);
   gmat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, {tLD:{value:lD}, tLN:{value:lN}, tLA:{value:lA}, tMD:{value:mD}, tMN:{value:mN}, tMA:{value:mA},
-      tCD:{value:cD}, tCN:{value:cN}, tCA:{value:cA}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)}, uTexOK:groundTexOK});
+      tCD:{value:cD}, tCN:{value:cN}, tCA:{value:cA}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)}, uTexOK:groundTexOK, uGapG:{value:new THREE.Vector3(GAPS[0].x, GAPS[0].z, GAPS[0].r)}});
     sh.vertexShader = 'attribute float aPath;\nvarying float vPath;\nvarying vec3 vGP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vPath = aPath; vGP = position;');
     // wet trail clay: compacted, it holds a film of water and shines rather than going dark (gwC is the clay weight)
-    sh.fragmentShader = (Q.groundDetail ? '#define GROUND_DETAIL\n' : '') + '#define WET_SOIL_DARK (0.35 - 0.25*gwC)\n#define WET_SOIL_ROUGH (0.62 - 0.2*gwC)\n' + `uniform sampler2D tLD, tLN, tLA, tMD, tMN, tMA, tCD, tCN, tCA; uniform vec3 uPond; uniform float uTexOK;
+    sh.fragmentShader = (Q.groundDetail ? '#define GROUND_DETAIL\n' : '') + '#define WET_SOIL_DARK (0.35 - 0.25*gwC)\n#define WET_SOIL_ROUGH (0.62 - 0.2*gwC)\n' + `uniform sampler2D tLD, tLN, tLA, tMD, tMN, tMA, tCD, tCN, tCA; uniform vec3 uPond, uGapG; uniform float uTexOK;
       varying float vPath; varying vec3 vGP;
       float gHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
       float gNoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -971,7 +999,8 @@ function lodFade(mat, rU, near, depth=false){
         GS gM = gSample(tMD, tMN, tMA, gw/1.6+0.5, nTile);              // mossy mud (1.3 m scan)
         GS gC = gSample(tCD, tCN, tCA, gw/2.2+0.25, nTile);             // red laterite clay (2.0 m scan)
         float gWet = 1.0 - smoothstep(uPond.z*1.08, uPond.z*1.4, length(vGP.xz - uPond.xy) + (nMid-0.5)*4.0);   // pond margin (most of the valley floor lies below WATER_Y, so use distance, not height)
-        float gwM = smoothstep(0.38, 0.58, nBig*0.75 + nMid*0.35 + gWet*0.6 - 0.05);
+        float gOpen = 1.0 - smoothstep(uGapG.z*0.8, uGapG.z*1.3, length(vGP.xz - uGapG.xy));   // the sunny clearing
+        float gwM = smoothstep(0.38, 0.58, nBig*0.75 + nMid*0.35 + gWet*0.6 - 0.05 - 0.16*(1.0 - max(gOpen, gWet)));   // mossy mud: patches; mostly leaf litter under the closed canopy
         float gwC = smoothstep(0.3, 0.75, vPath + (nMid-0.5)*0.55);
         GS gG; gG.d = mix(gL.d, gM.d, gwM); gG.n = mix(gL.n, gM.n, gwM); gG.a = mix(gL.a, gM.a, gwM);
         gG.d = mix(gG.d, gC.d, gwC); gG.n = mix(gG.n, gC.n, gwC); gG.a = mix(gG.a, gC.a, gwC);
@@ -1321,13 +1350,37 @@ function treeFern(x,z){
   for(let k=0;k<n;k++) put(T.frond,x,y+h,z, rr(0.5,1.35), k*6.283/n+rr(-.2,.2), L,L,L, tmpC.setRGB(rr(.75,1),rr(.88,1),rr(.6,.9)).clone(), cell);
   colliders.push({x,z,r:0.3});
 }
-// Heliconia-style flower spikes: zig-zag bracts in red, orange and gold, mostly near the trail
+// Heliconias, mostly near the trail: a clump of banana-like paddle leaves on long petioles, and an inflorescence of
+// boat-shaped bracts in red, orange or gold on a zig-zag rachis, either upright (like H. bihai) or hanging (like
+// H. rostrata). Same seeded place, height, bract count, colour and turn as the old cone spikes; everything else comes
+// from a position hash (no rand() inside, as before).
 const FLOWER_COLS=['#d8241c','#e8401a','#f06a12','#c81830','#f2a516','#e5571c'].map(h=>new THREE.Color(h));
+const HELI = {leaf:[], rachis:[]};
 function flowerSpike(x,z){
   const y=height(x,z), h=rr(0.5,1.2), n=4+((rand()*4)|0), col=pick(FLOWER_COLS), yaw0=rand()*6.283;
   const keep = rand2() < 0.45;
-  for(let k=0;k<n && keep;k++){ const t=k/n, s=0.13*(1-t*0.5);
-    put(T.flower, x+Math.cos(yaw0)*(k%2?0.05:-0.05), y+h*0.35+t*h*0.65, z+Math.sin(yaw0)*(k%2?0.05:-0.05), (k%2?1:-1)*1.0, yaw0, s,s*1.8,s, col); }
+  if (keep) heliconia(x, y, z, h, n, col, yaw0);
+}
+function heliconia(x, y, z, h, n, col, yaw0){
+  const hq = k => hash01(x, z, 30+k), pend = hq(0) < 0.4, H = 1.3 + 1.1*h, green = new THREE.Color('#5a7a2c');
+  const nl = 3 + ((hq(1)*3)|0);
+  for (let k=0;k<nl;k++){ const L = H*(0.8 + 0.35*hash01(x+k, z, 33)), a = yaw0 + 0.6 + k*2.39996 + 0.4*hash01(x, z+k, 34);
+    put(HELI.leaf, x, y - 0.05, z, 0.22 + 0.45*hash01(x+k, z+k, 35), a, L*0.34, L, L, tmpC.setRGB(0.85+0.15*hash01(x, z-k, 36), 0.9+0.1*hash01(x-k, z, 37), 0.85).clone()); }
+  // inflorescence on its own stalk, held among the leaves
+  const seg = (a, b, r) => { const dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, l=Math.hypot(dx,dy,dz)||1e-3;
+    put(HELI.rachis, a.x, a.y, a.z, Math.acos(Math.max(-1, Math.min(1, dy/l))), Math.atan2(dx, dz), r, l, r, r > 0.016 ? green : col); };   // green stalk, rachis in the bract colour
+  const ox = Math.cos(yaw0), oz = -Math.sin(yaw0), top = new THREE.Vector3(x + ox*0.15, y + H*(pend ? 0.8 : 0.6), z + oz*0.15);
+  if (pend){ const bend = new THREE.Vector3(x + ox*0.05, y + H*0.7, z + oz*0.05); seg({x, y, z}, bend, 0.022); seg(bend, top, 0.018); }
+  else seg({x, y, z}, top, 0.022);
+  const len = 0.4 + 0.5*h, dir = pend ? -1 : 1, perp = yaw0;    // the bracts alternate in the plane across yaw0
+  let prev = top;
+  for (let k=0;k<n;k++){
+    const t = k/n, side = k%2 ? 1 : -1, s = (0.2 + 0.12*h)*(1 - 0.4*t);
+    const p = new THREE.Vector3(top.x + Math.sin(perp)*side*0.03, top.y + dir*len*(t + 0.5/n), top.z + Math.cos(perp)*side*0.03);
+    seg(prev, p, 0.015*(1 - 0.4*t)); prev = p;
+    // a bract: base on the rachis, pointing out to its side; upright ones angle up, hanging ones out and a little down
+    put(T.flower, p.x, p.y, p.z, pend ? 1.75 + 0.15*t : 0.85 + 0.2*t, perp + (side > 0 ? 0 : Math.PI), s*0.7, s, s*0.8, col);
+  }
 }
 function randomSpot(pad, maxR=175){ for(let t=0;t<60;t++){ const a=rand()*6.283, r=Math.sqrt(rand())*maxR, x=Math.cos(a)*r, z=Math.sin(a)*r; if(clear(x,z,pad)) return [x,z]; } return null; }
 
@@ -1512,7 +1565,26 @@ function ropes(list, seg, radial){
     return [top.x, top.y, top.z, x, y, z, Math.cos(a)*bow, anchored ? -bow*0.5 : 0, Math.sin(a)*bow, sx, h1*10, 0.04 + 0.12*h2, anchored ? 0 : 1, VINE_C.r*k, VINE_C.g*k, VINE_C.b*k];
   }), Q.vineSeg, 5); }
 // heliconia bracts: natural waxy red, no glow
-instanced(new THREE.ConeGeometry(1,1,4).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({roughness:.4, envMapIntensity:.6}), 3), T.flower, {cast:false, receive:true, colors:true});
+// heliconia bracts: a keeled, boat-shaped shell (length along +Y, opening on -Z, which faces up once tipped), waxy;
+// vertex colours multiply the bract colour: yellow toward the tip, green along the lip
+const bractGeo = (() => { const U=10, V=6, pos=[], col=[], idx=[];
+  for (let i=0;i<=U;i++) for (let j=0;j<=V;j++){ const u=i/U, v=j/V*2-1, wdt=Math.pow(Math.sin(Math.PI*Math.min(1, 0.15+u*0.85)), 0.8)*(1-0.3*u);
+    pos.push(v*wdt*0.5, u + 0.08*Math.sin(u*3)*0, (1 - v*v)*wdt*0.42 - 0.12*u*u);
+    const tip = Math.max(0, (u-0.65)/0.35), lip = Math.pow(Math.abs(v), 6);
+    col.push(1, 1 + 2.8*tip*tip + 1.6*lip, 1 + 0.6*lip); }
+  for (let i=0;i<U;i++) for (let j=0;j<V;j++){ const a=i*(V+1)+j, b=a+V+1; idx.push(a,b,a+1, b,b+1,a+1); }
+  const g = new THREE.BufferGeometry(); g.setIndex(idx); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col,3));
+  g.computeVertexNormals(); return g; })();
+instanced(bractGeo, wetKind(new THREE.MeshStandardMaterial({vertexColors:true, roughness:.35, envMapIntensity:.7, side:THREE.DoubleSide}), 3), T.flower, {cast:Q.frondShadow, receive:true, colors:true});
+instanced(new THREE.CylinderGeometry(0.8,1,1,5).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({roughness:.6, envMapIntensity:.5}), 3), HELI.rachis, {receive:true, colors:true});
+// banana-like heliconia leaves: petiole then blade, arching up and drooping at the tip, the halves folded up along the midrib
+const bananaGeo = (() => { const g=new THREE.PlaneGeometry(1,1,4,14); g.translate(0,0.5,0); const p=g.attributes.position;
+  for (let i=0;i<p.count;i++){ const x=p.getX(i), y=p.getY(i), bl=Math.max(0,(y-0.4)/0.6); p.setZ(i, 0.3*y*y + 0.25*bl*bl - 0.16*Math.abs(x)*bl); }
+  g.computeVertexNormals(); return g; })();
+bananaTex.anisotropy = ANISO;
+const bananaMat = addWind(wetKind(new THREE.MeshStandardMaterial({map:bananaTex, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.45, envMapIntensity:0.8}), 3), 'frond', 0.06, 1.0);
+const bananaLeaves = instanced(bananaGeo, bananaMat, HELI.leaf, {cast:Q.frondShadow, receive:true, colors:true});
+bananaLeaves.customDepthMaterial = new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking, map:bananaTex, alphaTest:0.5});
 const leafMat = addWind(foliageMat(FOLIAGE.cardD, FOLIAGE.cardA, 0.55, 0.8), 'leaf', 0.06, 1.0, {atlas:true, crown:true});
 const leaves = instanced(cardGeo, leafMat, T.leaf, {cast:true, receive:true, colors:true}); leaves.customDepthMaterial = cutoutDepth(FOLIAGE.cardA);
 // Plants with a scanned near mesh (PLANT_KINDS, see "Scanned plants"): uLodR per kind, -1 until its GLB is in
@@ -1634,10 +1706,10 @@ function grassLayer(N, H, inner, sMul, oldBlades){
   const mat=wetKind(new THREE.MeshLambertMaterial({map:FOLIAGE.leafD, alphaMap:FOLIAGE.leafA, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide}), 3);
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, {uTime:windTime, uCam:grassCam, uHalf:{value:H}, uInner:{value:inner}, uWater:{value:WATER_Y}, uPond:{value:new THREE.Vector3(POND.x,POND.z,POND.r)},
-      uSunView:sunView, uSunCol:{value:SUN_COL}});
+      uSunView:sunView, uSunCol:{value:SUN_COL}, uGap:{value:new THREE.Vector3(GAPS[0].x, GAPS[0].z, GAPS[0].r)}, uSeedlings:{value:Q.seedlings}});
     atlasVertex(sh); mipAlpha(sh, 2048);
-    sh.vertexShader = `uniform float uTime; uniform vec2 uCam; uniform float uHalf; uniform float uInner; uniform float uWater; uniform vec3 uPond;
-      attribute vec2 aOffset; attribute float aRot; attribute vec2 aSize; attribute vec3 aShape; attribute vec3 aTint; varying vec3 vTint;
+    sh.vertexShader = `uniform float uTime; uniform vec2 uCam; uniform float uHalf; uniform float uInner; uniform float uWater; uniform vec3 uPond; uniform vec3 uGap; uniform float uSeedlings;
+      attribute vec2 aOffset; attribute float aRot; attribute vec2 aSize; attribute vec3 aShape; attribute vec3 aTint; varying vec3 vTint; varying float vLitter;
       float gPathX(float z){ return sin(z*0.012)*3.5 + sin(z*0.05)*0.8; }
       float terrainH(vec2 q){ float x=q.x, z=q.y;
         float h = sin(x*0.021)*3.2 + cos(z*0.026)*3.2 + sin((x+z)*0.05)*1.2 + sin(x*0.13+z*0.09)*0.4;
@@ -1651,25 +1723,38 @@ function grassLayer(N, H, inner, sMul, oldBlades){
       .replace('#include <beginnormal_vertex>', `
         vec2 wxz = uCam + mod(aOffset - uCam + uHalf, 2.0*uHalf) - uHalf;   // wrap the tile around the player
         float gy = terrainH(wxz), dc = length(wxz-uCam);
-        float kk = smoothstep(1.4, 2.6, abs(wxz.x - gPathX(wxz.y))) * step(uWater+0.12, gy) * (1.0 - smoothstep(uHalf*0.72, uHalf*0.98, dc))
+        float kk = smoothstep(1.4, 2.6, abs(wxz.x - gPathX(wxz.y))) * max(step(uPond.z*1.1, length(wxz - uPond.xy)), step(uWater+0.12, gy)) * (1.0 - smoothstep(uHalf*0.72, uHalf*0.98, dc))   // out of the pond (not by height alone: most of the valley floor lies below WATER_Y)
           * (uInner > 0.0 ? smoothstep(uInner*0.6, uInner*0.85, dc) : 1.0);
+        // Amazon floor: living plants only in the sunny clearing and at the pond margin; elsewhere most spots are leaf
+        // litter (five fallen leaves lying flat, brown) and the rest small seedlings. The lawn-like clover stays in the open.
+        float lush = max(1.0 - smoothstep(uGap.z*0.75, uGap.z*1.2, length(wxz - uGap.xy)), 1.0 - smoothstep(uPond.z*1.15, uPond.z*1.5, length(wxz - uPond.xy)));
+        float rsel = fract(aRot*7.31 + aOffset.x*0.0137 + aOffset.y*0.0191);
+        float alive = step(rsel, mix(uSeedlings, 1.0, lush)) * (aShape.x > 1.25 ? step(0.5, lush) : 1.0), litter = 1.0 - alive;
+        if (uInner > 0.0) kk *= alive;                                           // far ring: litter would vanish into the litter floor anyway
         float lk = position.z, ls = position.x, lt = position.y;
-        float yaw = aRot + lk*2.39996 + sin(lk*7.1 + aRot)*0.3;                 // golden-angle spread, a little irregular
-        float L = aSize.x * (0.8 + 0.3*fract(lk*0.618 + aRot*3.1)) * kk;
-        float tilt = aShape.x + (fract(lk*0.37 + aRot) - 0.5)*0.35;
+        float yaw = aRot + lk*2.39996 + sin(lk*7.1 + aRot)*0.3 + litter*(aRot*5.0 + lk*1.7);   // golden-angle spread, a little irregular; litter at random
+        float L = aSize.x * (0.8 + 0.3*fract(lk*0.618 + aRot*3.1)) * kk * mix(mix(0.6, 1.0, lush), 0.0, litter) + litter*kk*(0.09 + 0.12*fract(lk*0.37 + aRot*2.3));
+        float tilt = mix(aShape.x + (fract(lk*0.37 + aRot) - 0.5)*0.35, 1.5 + (fract(lk*0.53 + aRot) - 0.5)*0.12, litter);
         float gust = sin(uTime*0.6 + wxz.x*0.02 + wxz.y*0.015)*0.5 + 0.6;
-        float wv = (sin(uTime*1.8 + wxz.x*0.17 + wxz.y*0.13 + lk)*0.7 + sin(uTime*3.3 + wxz.x*0.9)*0.3) * gust * 0.12;
-        float aMid = tilt + (aShape.y*0.5 + wv)*lt, aTip = tilt + (aShape.y + wv)*lt;
+        float wv = (sin(uTime*1.8 + wxz.x*0.17 + wxz.y*0.13 + lk)*0.7 + sin(uTime*3.3 + wxz.x*0.9)*0.3) * gust * 0.12 * alive;
+        float droop = mix(aShape.y, -0.35, litter);                              // fallen leaves curl up a little at the tip
+        float aMid = tilt + (droop*0.5 + wv)*lt, aTip = tilt + (droop + wv)*lt;
+        float la = aRot*3.0 + lk*2.39996 + sin(lk*5.3 + aRot)*0.8, ld = (0.08 + 0.3*fract(lk*0.618 + aRot*1.7))*litter;
+        vec2 lofs = vec2(sin(la), cos(la))*ld;                                   // litter: scatter the five leaves around the spot
         vec3 hdir = vec3(sin(yaw), 0.0, cos(yaw)), side = vec3(cos(yaw), 0.0, -sin(yaw));
         vec3 tang = hdir*sin(aTip) + vec3(0.0, cos(aTip), 0.0);
         vec3 objectNormal = normalize(cross(tang, side) + vec3(0.0, 0.35, 0.0));   // biased up: low leaves catch skylight
         vec3 gcPos = (hdir*sin(aMid) + vec3(0.0, cos(aMid), 0.0))*L*lt + side*ls*L*aSize.y
           - objectNormal*abs(ls)*L*aSize.y*0.25                                   // cupped leaf blade
-          + vec3(wxz.x, gy - 0.02 + aShape.z*kk, wxz.y);
-        vTint = aTint * mix(0.5, 1.0, smoothstep(0.0, 0.7, lt));                 // darker toward the base`)
+          + vec3(wxz.x + lofs.x, gy - 0.02 + mix(aShape.z, 0.035, litter)*kk, wxz.y + lofs.y);
+        vTint = aTint * mix(0.5, 1.0, smoothstep(0.0, 0.7, lt));                 // darker toward the base
+        float lc = fract(lk*0.71 + aRot*4.3);                                    // litter: dry browns, a few yellow, a few dark and wet
+        vTint = mix(vTint, (lc < 0.6 ? vec3(0.62, 0.42, 0.24) : lc < 0.82 ? vec3(0.78, 0.62, 0.3) : vec3(0.32, 0.24, 0.16))*(0.8 + 0.4*fract(lk*0.29 + aRot*1.3)), litter);
+        vLitter = litter;`)
       .replace('#include <begin_vertex>', 'vec3 transformed = gcPos;');
-    sh.fragmentShader = 'varying vec3 vTint;\nuniform vec3 uSunView;\nuniform vec3 uSunCol;\n' + sh.fragmentShader
-      .replace('#include <color_fragment>', 'diffuseColor.rgb *= vTint;')
+    sh.fragmentShader = 'varying vec3 vTint;\nvarying float vLitter;\nuniform vec3 uSunView;\nuniform vec3 uSunCol;\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', 'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)))*1.9, vLitter) * vTint;   // fallen leaves lose their green')
+      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(vNormal);   // both faces keep the up-biased leaf normal (a flipped one turned low leaves black)')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 1.12, 0.55) * uSunCol * pow(max(dot(-normalize(vViewPosition), uSunView), 0.0), 4.0) * 0.8;`);
   };
