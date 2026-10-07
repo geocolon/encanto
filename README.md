@@ -6,7 +6,7 @@ Walk through a crowded Amazon rainforest valley in a gentle sun shower, right in
 
 **Live site:** https://geocolon.github.io/encanto/
 
-Everything is built in code inside a single `index.html`: terrain, trees, grass, flowers, animals, rain and the forest soundscape. Beyond three.js (from a CDN), the only downloads are CC0 files from Poly Haven in `assets/` (about 11 MB): sky and forest-floor textures, bark and moss textures, and leaf atlases cut from scanned plants (by `scripts/build-foliage.py`).
+Everything is built in code inside a single `index.html`: terrain, trees, grass, flowers, animals, rain and the forest soundscape. Beyond three.js (from a CDN), the only downloads are CC0 files from Poly Haven in `assets/` (about 14 MB): sky and forest-floor textures, bark and moss textures, leaf atlases cut from scanned plants (by `scripts/build-foliage.py`), and scanned plant, rock, log and root models (meshopt-compressed GLBs with WebP textures, built by `scripts/build-models.mjs`).
 
 ## Controls
 
@@ -18,9 +18,10 @@ Everything is built in code inside a single `index.html`: terrain, trees, grass,
 
 ## What's in the valley
 
-- Giant kapok-style trees with buttress roots, a dense canopy and understory saplings
-- Monstera, ferns, tree ferns, heliconia, orchids and other tropical flowers
-- Moss-covered boulders and fallen trees, blue-green grass across the forest floor
+- Giant kapok-style trees on thin plank buttresses, leaning and swelling trunks with forked limbs, a dense canopy and understory saplings
+- Scanned ferns, anthuriums and calatheas around you, monstera, tree ferns, heliconias with paddle leaves and boat-shaped red and gold bracts, orchids and other tropical flowers
+- Scanned mossy boulders, fallen trunks, upturned root plates and surface roots; a leaf-litter floor with seedlings, and greener ground only in the sunny clearing and by the pond
+- Lianas sagging between the trees and vines hanging from the crowns, swaying in the wind
 - Scarlet, blue-and-yellow, hyacinth and red-and-green macaws, parakeets, troupials, tanagers, hummingbirds, toucans, blue morphos and capybaras
 - A slow sun shower with pond ripples and synthesized rain, bird and insect sounds
 - A 360° ring of misty mountains, a dark green understory lit by how open the canopy is, ray-marched sun shafts and humid haze, rain-wet bark, soil and leaves, and a warm lens flare
