@@ -39,7 +39,7 @@ const sharp = req('sharp');
 await MeshoptSimplifier.ready; await MeshoptEncoder.ready;
 
 /* out: GLB name; src: Poly Haven id; kind: 'plant' (base at origin, alpha merged) or 'solid' (centred);
-   nodes: { meshName: [source node name, triangle budget] }; tex: [albedo px, normal px, ARM/roughness px or 0 to drop] */
+   nodes: { meshName: [source node name, triangle budget, max simplify error (default 0.02)] }; tex: [albedo px, normal px, ARM/roughness px or 0 to drop] */
 const MODELS = [
   { out: 'fern_02', src: 'fern_02', kind: 'plant', tex: [1024, 512, 0],
     nodes: { a: ['fern_02_b', 1100], b: ['fern_02_c', 1100], c: ['fern_02_a', 600], d: ['fern_02_d', 600] } },
@@ -47,6 +47,16 @@ const MODELS = [
     nodes: { a: ['anthurium_botany_01_a', 1800], b: ['anthurium_botany_01_b', 1700], c: ['anthurium_botany_01_c', 1300], d: ['anthurium_botany_04_d', 1000] } },
   { out: 'calathea_orbifolia_01', src: 'calathea_orbifolia_01', kind: 'plant', tex: [1024, 512, 0],
     nodes: { a: ['calathea_orbifolia_01_a', 1500], b: ['calathea_orbifolia_01_b', 1000], c: ['calathea_orbifolia_01_c', 1000] } },
+  // ground objects (stage 4 step 2): bare scans, centred on their bounding box; index.html orients and fits them
+  { out: 'rock_moss_set_02', src: 'rock_moss_set_02', kind: 'solid', tex: [1024, 1024, 512],
+    nodes: { a: ['rock_moss_set_02_rock08', 700], b: ['rock_moss_set_02_rock09', 700], c: ['rock_moss_set_02_rock10', 700], d: ['rock_moss_set_02_rock11', 700],
+      e: ['rock_moss_set_02_rock12', 700], pa: ['rock_moss_set_02_rock08', 110, 0.2], pb: ['rock_moss_set_02_rock10', 110, 0.2], pc: ['rock_moss_set_02_rock12', 110, 0.2] } },
+  { out: 'dead_tree_trunk', src: 'dead_tree_trunk', kind: 'solid', tex: [1024, 1024, 512], nodes: { a: ['dead_tree_trunk', 2600] } },
+  { out: 'dead_tree_trunk_02', src: 'dead_tree_trunk_02', kind: 'solid', tex: [1024, 1024, 512], nodes: { a: ['dead_tree_trunk_02', 2600] } },
+  { out: 'root_cluster_01', src: 'root_cluster_01', kind: 'solid', tex: [1024, 1024, 512], nodes: { a: ['root_cluster_01', 2400] } },
+  { out: 'root_cluster_02', src: 'root_cluster_02', kind: 'solid', tex: [1024, 1024, 512],
+    nodes: { a: ['root_cluster_02_d', 700], b: ['root_cluster_02_f', 700], c: ['root_cluster_02_b', 700] } },
+  { out: 'single_root', src: 'single_root', kind: 'solid', tex: [1024, 1024, 512], nodes: { a: ['single_root', 1200] } },
 ];
 
 const fetchTo = async (url, fn) => {
@@ -74,23 +84,27 @@ for (const M of MODELS) {
   const gl = await download(M.src, M.kind === 'plant');
   const doc = await io.read(gl);
   const root = doc.getRoot(), scene = root.listScenes()[0];
-  // keep only the wanted nodes, flattened into the scene root with their transforms baked into the mesh
-  const keep = new Map(Object.entries(M.nodes).map(([k, [n, t]]) => [n, { key: k, tris: t }]));
-  for (const node of root.listNodes()) {
-    const want = keep.get(node.getName());
-    if (!want || !node.getMesh()) { node.dispose(); continue; }
-    const mesh = node.getMesh().setName(want.key);
-    transformMesh(mesh, node.getWorldMatrix());
-    node.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]).setName(want.key);
-    scene.addChild(node);
-    for (const prim of mesh.listPrimitives()) {
-      for (const sem of prim.listSemantics()) if (/^COLOR_/.test(sem)) prim.setAttribute(sem, null);   // vertex colours: unused (and unknown meaning)
-      weldPrimitive(prim, { tolerance: 0.0001 });
+  // one new node per key, from a copy of the source node's mesh with its world transform baked in (the same source can
+  // appear under several keys, e.g. a rock at two triangle budgets); the source nodes are dropped afterwards
+  const srcNodes = new Map(root.listNodes().map(n => [n.getName(), n]));
+  const keep = new Map(Object.entries(M.nodes).map(([k, [n, t, e]]) => [k, { key: k, src: n, tris: t, err: e || 0.02 }]));
+  for (const want of keep.values()) {
+    const sn = srcNodes.get(want.src);
+    if (!sn || !sn.getMesh()) throw new Error(`${M.src}: node ${want.src} not found`);
+    const mesh = doc.createMesh(want.key);
+    for (const p of sn.getMesh().listPrimitives()) {
+      const np = doc.createPrimitive().setMode(p.getMode()).setMaterial(p.getMaterial()).setIndices(p.getIndices().clone());
+      for (const sem of p.listSemantics()) if (!/^COLOR_/.test(sem)) np.setAttribute(sem, p.getAttribute(sem).clone());   // vertex colours: unused
+      weldPrimitive(np, { tolerance: 0.0001 });
+      mesh.addPrimitive(np);
     }
+    transformMesh(mesh, sn.getWorldMatrix());
+    const node = doc.createNode(want.key).setMesh(mesh);
+    scene.addChild(node);
     const before = triCount(mesh);
     for (const prim of mesh.listPrimitives()) {
       const n = prim.getIndices().getCount() / 3, ratio = Math.min(1, want.tris / before);
-      if (ratio < 1) simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio, error: 0.02, lockBorder: false });
+      if (ratio < 1) simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio, error: want.err, lockBorder: false });
     }
     // re-centre: plants keep their base at y=0 under the stem; solids get their box centre at the origin
     const b = getBounds(node), c = [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2];
@@ -99,7 +113,7 @@ for (const M of MODELS) {
     transformMesh(mesh, T);
     want.done = { before, after: triCount(mesh) };
   }
-  for (const [n, w] of keep) if (!w.done) throw new Error(`${M.src}: node ${n} not found`);
+  for (const n of srcNodes.values()) n.dispose();
   // materials: plain metal/rough (three's MeshStandardMaterial); the leaf alpha goes into the albedo's alpha channel
   for (const mat of root.listMaterials()) {
     mat.setExtension('KHR_materials_specular', null).setExtension('KHR_materials_ior', null);

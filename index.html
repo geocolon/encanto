@@ -281,7 +281,7 @@ body.touch #wayPrompt .touch-only{display:inline}
     <section>
       <h3>Credits</h3>
       <p>Created by Paloma. Built with three.js and made with help from Claude Code. <a href="https://github.com/geocolon/encanto" target="_blank" rel="noopener">Source on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>
-      <p>Sky, forest light, forest-floor and bark textures and the scanned plant leaves are from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven<span class="vh"> (opens in a new tab)</span></a>, released under CC0: Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps); the Fern 02, Anthurium Botany 01 and Calathea Orbifolia 01 scanned meshes for the plants near you.</p>
+      <p>Sky, forest light, forest-floor and bark textures and the scanned plant leaves are from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven<span class="vh"> (opens in a new tab)</span></a>, released under CC0: Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps); the Fern 02, Anthurium Botany 01 and Calathea Orbifolia 01 scanned meshes for the plants near you; Rock Moss Set 02, Dead Tree Trunk, Dead Tree Trunk 02, Root Cluster 01, Root Cluster 02 and Single Root models for the rocks, fallen logs and roots.</p>
     </section>
     <button class="btn" id="detailsReturn" type="button">Return to the forest</button>
   </div>
@@ -1123,6 +1123,8 @@ let LOD_C = null;
 function put(list, x,y,z, rx,ry, sx,sy,sz, col, cell, cn){ list.push([x,y,z,rx,ry,sx,sy,sz,col,cell,cn,LOD_C]); }
 // Plants drawn as scanned meshes near the player: [kind, x, y, z, size]; kind picks the GLB (see PLANT_LOD)
 const PLANTS = [];
+// Giant trunk bases [x, y, z, r, fin yaws]: scanned roots go between the buttresses (see "Scanned ground objects")
+const BASES = [];
 const CROWN_KINDS = ['broad','broad','small','small','pachira'];   // canopy species mix: simple-leaved trees dominate
 // Sun gaps: scattered holes in the crowns, lined up along SUN_DIR so a sun ray passes every crown layer through the
 // same hole. Leaf cards inside a hole are not placed and cards at its edge are shrunk so they don't close it (their
@@ -1160,6 +1162,7 @@ function giant(x,z,h,r){
   put(T.trunk,x,y,z,0,rand()*6, r,h,r);
   const fins=5;
   for(let k=0;k<fins;k++) put(T.fin,x,y,z,0,k*6.283/fins+rr(-.3,.3), r*rr(2.6,3.8), r*rr(2.5,4.2), rr(.9,1.4));
+  BASES.push([x, y+0.4, z, r, T.fin.slice(-fins).map(f=>f[4])]);
   const top=y+h*0.88, R=rr(8,11);
   for(let k=0;k<5;k++){
     const yaw=k*1.2566+rr(-.3,.3), tilt=rr(0.85,1.15), len=R*rr(0.7,0.9);
@@ -1574,25 +1577,107 @@ function grassLayer(N, H, inner, sMul, oldBlades){
 grassLayer(Q.grass, Q.grassHalf, 0, 1, IS_TOUCH ? 22000 : 80000);
 grassLayer(Q.grassMid, Q.grassMidHalf, Q.grassHalf, 1.7, IS_TOUCH ? 16000 : 60000);
 
-/* Meshes for boulders, fallen trees, root plates, branch stubs and moss cushions */
-instanced(new THREE.DodecahedronGeometry(1,1), stoneMat, ROCKS, {cast:true, receive:true});
-instanced(new THREE.CylinderGeometry(0.85,1,1,12,4), mossMat, LOGS, {cast:true, receive:true});
-instanced(new THREE.CylinderGeometry(1,0.8,1,14,1), mossMat, PLATES, {cast:true, receive:true});
+/* Meshes for boulders, fallen trees, root plates, branch stubs and moss cushions. The primitive shapes are the fallback;
+   "Scanned ground objects" below swaps them for Poly Haven scans as the GLBs arrive. */
+const rockFB = instanced(new THREE.DodecahedronGeometry(1,1), stoneMat, ROCKS, {cast:true, receive:true});
+const logFB = instanced(new THREE.CylinderGeometry(0.85,1,1,12,4), mossMat, LOGS, {cast:true, receive:true});
+const plateFB = instanced(new THREE.CylinderGeometry(1,0.8,1,14,1), mossMat, PLATES, {cast:true, receive:true});
 instanced(branchGeo, mossMat, STUBS, {cast:true, receive:true});
+const mossFB = {mesh:null};
 {
   const g=new THREE.IcosahedronGeometry(1,1); const p=g.attributes.position;
   for(let i=0;i<p.count;i++){ const k=1+Math.sin(p.getX(i)*7+p.getZ(i)*5)*0.12; p.setXYZ(i,p.getX(i)*k,Math.max(-0.2,p.getY(i)),p.getZ(i)*k); }
   g.computeVertexNormals();
-  instanced(g, wetKind(new THREE.MeshStandardMaterial({color:'#c4d29a', map:BARK.moss[0], normalMap:BARK.moss[1], roughness:1, envMapIntensity:0.3}), 2), MOSS, {receive:true});
+  mossFB.mesh = instanced(g, wetKind(new THREE.MeshStandardMaterial({color:'#c4d29a', map:BARK.moss[0], normalMap:BARK.moss[1], roughness:1, envMapIntensity:0.3}), 2), MOSS, {receive:true});
 }
+
+/* Scanned ground objects: Poly Haven mossy rocks, dead trunks, a root plate and roots (scripts/build-models.mjs) take
+   over the seeded rocks, logs and root plates as their GLBs arrive, at the same place, turn and size: each scan is
+   normalized to the primitive it replaces (rocks to a unit box like the dodecahedron, logs to a unit-radius,
+   unit-length cylinder along Y, the root plate to the plate disc), so every instance transform is reused as is.
+   Boulders get 700-triangle rocks, pebbles 110-triangle ones. Moss grows on whatever faces up (mossCover). Roots
+   (single_root, root_cluster_02) are new: they sit between the buttress fins of every giant, sloping from the
+   trunk down to the floor. Variant choice from a position hash; rand() untouched. */
+const ZERO_M = new THREE.Matrix4().makeScale(0,0,0);
+// Moss on the upward-facing parts of a scanned surface (world normal from the normal map), broken up by the moss texture
+function mossCover(m, bias, uvScale){
+  const ob = m.onBeforeCompile, key = m.customProgramCacheKey();
+  m.onBeforeCompile = function(sh, r){ ob.call(this, sh, r); sh.uniforms.tMossC = {value:BARK.moss[0]};
+    sh.fragmentShader = 'uniform sampler2D tMossC;\n' + sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      { vec3 wN = inverseTransformDirection(normal, viewMatrix); vec2 mu = vMapUv*${uvScale.toFixed(2)};
+        float mk = smoothstep(0.25, 0.65, wN.y*0.8 + (texture2D(tMossC, mu*0.21 + 0.3).g - 0.3)*1.6 + ${bias.toFixed(2)});
+        diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(tMossC, mu).rgb*vec3(0.8, 0.9, 0.7), mk);
+        roughnessFactor = mix(roughnessFactor, 1.0, mk); }`);
+  };
+  m.customProgramCacheKey = () => key + '|moss-cover-' + bias + '-' + uvScale;
+  return m;
+}
+function scanMat(src, {ao=false, moss=null, env=0.5}={}){
+  for (const t of [src.map, src.normalMap, src.roughnessMap]) if (t) t.anisotropy = ANISO;
+  const m = wetKind(new THREE.MeshStandardMaterial({map:src.map, normalMap:src.normalMap, normalScale:src.normalScale, roughnessMap:src.roughnessMap,
+    aoMap:ao ? src.roughnessMap : null, roughness:1, metalness:0, envMapIntensity:env}), 2);
+  return moss ? mossCover(m, moss[0], moss[1]) : m;
+}
+// Draw entries `idx` of `list` with a scanned geometry, and hide them in the primitive fallback mesh
+function scanSwap(fallback, list, idx, geo, mat, xf){
+  if (!idx.length) return null;
+  const m = new THREE.InstancedMesh(geo, mat, idx.length);
+  idx.forEach((i,k) => { const t = list[i]; dummy.position.set(t[0],t[1],t[2]); dummy.rotation.set(t[3],t[4],0); dummy.scale.set(t[5],t[6],t[7]);
+    if (xf) xf(t, dummy); dummy.updateMatrix(); m.setMatrixAt(k, dummy.matrix); if (fallback) fallback.setMatrixAt(i, ZERO_M); });
+  if (fallback){ fallback.instanceMatrix.needsUpdate = true; fallback.computeBoundingSphere(); }
+  m.castShadow = m.receiveShadow = true; scene.add(m); if (running) worldLit(mat); return m;
+}
+// geometry helpers: centre is already the bounding-box centre (build script); fit the box to [-1,1] or to given half sizes
+const fitBox = (g, hx, hy, hz) => { const b = g.boundingBox, s = new THREE.Vector3(); b.getSize(s); g.scale(2*hx/s.x, 2*hy/s.y, 2*hz/s.z); g.computeBoundingBox(); g.computeBoundingSphere(); return g; };
+onModel('rock_moss_set_02', parts => {
+  const mat = scanMat(parts.a.mat, {moss:[0.05, 2.5], env:0.4});
+  const big = ['a','b','c','d','e'], small = ['pa','pb','pc'], by = {};
+  ROCKS.forEach((t,i) => { const pebble = t[5] < 0.55, set = pebble ? small : big, v = set[(hash01(t[0],t[2],5)*set.length)|0]; (by[v] = by[v] || []).push(i); });
+  for (const v of [...big, ...small]) if (parts[v]) scanSwap(rockFB, ROCKS, by[v] || [], fitBox(parts[v].geo, 1, 1, 1), mat);
+  if (mossFB.mesh){ scene.remove(mossFB.mesh); }   // the scanned rocks carry their own moss; the cushion blobs read as green slabs
+});
+// logs: the scans lie along X with their top up; the fallback cylinder stands along Y and is tipped over by the instance
+// rotation, which turns local -Z to world up. So: scan X -> local Y, scan Y -> local -Z, scan Z -> local -X.
+const LOG_ROT = new THREE.Matrix4().set(0,0,-1,0, 1,0,0,0, 0,-1,0,0, 0,0,0,1);
+for (const [name, slim] of [['dead_tree_trunk', true], ['dead_tree_trunk_02', false]]) onModel(name, parts => {
+  const g = parts.a.geo.applyMatrix4(LOG_ROT); g.computeBoundingBox(); fitBox(g, 1, 0.5, 1);
+  const idx = []; LOGS.forEach((t,i) => { if ((t[6]/(2*t[5]) > 9) === slim) idx.push(i); });   // slender logs: dead_tree_trunk; stout ones: _02
+  scanSwap(logFB, LOGS, idx, g, scanMat(parts.a.mat, {ao:true, moss:[0.1, 3.0], env:0.35}));
+});
+// root plate: the ground scan of soil and roots, stood on edge at the log's base, its rooty top facing away from the log
+onModel('root_cluster_01', parts => {
+  const g = fitBox(parts.a.geo.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI)), 1, 0.5, 1);
+  scanSwap(plateFB, PLATES, PLATES.map((t,i)=>i), g, scanMat(parts.a.mat, {ao:true, env:0.3}), (t, d) => d.scale.y = t[6]*2.2);
+});
+// roots between the buttress fins of the giants: from the trunk surface down to the floor
+const GROOTS = [];
+for (const [x, y, z, r, fins] of BASES){
+  const order = fins.map(a => ((a % 6.2832) + 6.2832) % 6.2832).sort((a,b) => a-b);
+  order.forEach((a, k) => {
+    const b = k+1 < order.length ? order[k+1] : order[0] + 6.2832, mid = (a + b)/2, dx = Math.cos(mid), dz = -Math.sin(mid);   // a fin at yaw a points along (cos a, -sin a)
+    const L = r*(2.4 + 1.6*hash01(x+k, z, 7)), d0 = r*0.85, yIn = y + r*0.35, yOut = height(x + dx*(d0+L), z + dz*(d0+L)) - 0.05;
+    const cx = x + dx*(d0 + L/2), cz = z + dz*(d0 + L/2);
+    GROOTS.push([cx, (yIn + yOut)/2 - 0.04*L, cz, Math.atan2(yIn - yOut, L), Math.atan2(dx, dz), L*0.3, L*0.12, L, (hash01(cx, cz, 8)*4)|0]);
+  });
+}
+onModel('single_root', parts => scanSwap(null, GROOTS, GROOTS.map((t,i)=>i).filter(i => GROOTS[i][8]===0), fitBox(parts.a.geo, 0.5, 0.5, 0.5), scanMat(parts.a.mat, {ao:true, moss:[-0.1, 2.0], env:0.3})));
+onModel('root_cluster_02', parts => { const mat = scanMat(parts.a.mat, {ao:true, moss:[-0.1, 2.0], env:0.3});
+  ['a','b','c'].forEach((v, k) => scanSwap(null, GROOTS, GROOTS.map((t,i)=>i).filter(i => GROOTS[i][8]===k+1), fitBox(parts[v].geo, 0.5, 0.5, 0.5), mat)); });
 
 /* Mossy surface roots snaking out from the giants, several crossing the trail */
 {
-  const rootGeos=[], rootMat=barkMaterial(BARK.moss, {tile:1.3, cyl:false, scale:[12,0.6], env:0.3});
+  const rootGeos=[], rootMat=mossCover(barkMaterial(BARK.trunk, {tile:1.3, cyl:false, scale:[12,0.6], env:0.3, color:'#9a8a78'}), -0.2, 1.0);   // bark, moss only on top
   const addRoot=(x0,z0,yaw,len,rad)=>{
     const pts=[]; let x=x0, z=z0, a=yaw;
     for(let k=0;k<=8;k++){ const t=k/8; pts.push(new THREE.Vector3(x, height(x,z)+rad*0.4+(k===0?0.5:0), z)); a+=rr(-0.35,0.35); x+=Math.sin(a)*len/8; z+=Math.cos(a)*len/8; }
-    const g=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, rad, 7, false);
+    const curve=new THREE.CatmullRomCurve3(pts), g=new THREE.TubeGeometry(curve, 32, rad, 7, false);
+    // a real surface root: thick at the trunk and tapering out, flattened, half sunk into the soil, gently lumpy
+    const p=g.attributes.position, c=new THREE.Vector3(), o=new THREE.Vector3();
+    for(let i=0;i<p.count;i++){ const ring=Math.floor(i/8), t=ring/32; curve.getPointAt(t, c); o.fromBufferAttribute(p, i).sub(c);
+      const k=(1.3-0.85*t)*(1+0.25*Math.sin(t*23+x0)+0.12*Math.sin(t*61+z0)); o.x*=k*1.15; o.z*=k*1.15; o.y*=k*(o.y>0 ? 0.8 : 0.3);
+      const dive=Math.max(0, Math.sin(t*9.5+x0*1.7))*Math.min(1, t*4)*1.3;   // arches up out of the soil and dives back in
+      p.setXYZ(i, c.x+o.x, c.y+o.y-rad*(0.3+dive)*k, c.z+o.z); }
+    g.computeVertexNormals();
     const m=new THREE.Mesh(g, rootMat); m.castShadow=m.receiveShadow=true; scene.add(m);
   };
   for (const tg of trailGiants){
