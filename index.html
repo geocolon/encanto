@@ -446,7 +446,7 @@ const FOG = new THREE.Color('#a3ad82');
 const VOL_FOG = 0.5;   // with the volumetric pass the near and mid haze is marched (see Camera pipeline); the in-material fog keeps only the far distance
 // Volumetric air (Q.vol): base extinction per metre at the valley floor, height falloff (m), floor height, phase g (forward
 // scattering), march length (m), sun scattering gain, and the sky-light haze colour and gain (scaled by canopy openness)
-const VOL = {density:0.012, fall:10, floorY:-2, g:0.7, maxDist:110, sun:0.5, amb:new THREE.Color('#a9bcc4'), ambI:0.6};
+const VOL = {density:0.012, fall:10, floorY:-2, g:0.7, maxDist:110, sun:1.4, amb:new THREE.Color('#a9bcc4'), ambI:0.5};   // sun 1.4 with the crown gaps (SUN_GAP): visible shafts; less sky haze keeps the shade between them dark
 scene.fog = new THREE.FogExp2(FOG.clone().multiplyScalar(Q.canopyLight ? 0.72 : 1), Q.fog*(Q.vol ? VOL_FOG : 1));   // haze under a closed canopy is dimmer than the open-sky horizon
 scene.background = FOG;
 const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1700);
