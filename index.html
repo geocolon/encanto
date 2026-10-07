@@ -281,7 +281,7 @@ body.touch #wayPrompt .touch-only{display:inline}
     <section>
       <h3>Credits</h3>
       <p>Created by Paloma. Built with three.js and made with help from Claude Code. <a href="https://github.com/geocolon/encanto" target="_blank" rel="noopener">Source on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>
-      <p>Sky, forest light, forest-floor and bark textures and the scanned plant leaves are from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven<span class="vh"> (opens in a new tab)</span></a>, released under CC0: Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps).</p>
+      <p>Sky, forest light, forest-floor and bark textures and the scanned plant leaves are from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven<span class="vh"> (opens in a new tab)</span></a>, released under CC0: Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps); the Fern 02, Anthurium Botany 01 and Calathea Orbifolia 01 scanned meshes for the plants near you.</p>
     </section>
     <button class="btn" id="detailsReturn" type="button">Return to the forest</button>
   </div>
@@ -380,6 +380,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 (() => {
 /* ================= Setup ================= */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -391,8 +393,8 @@ const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPo
 if (IS_TOUCH) document.body.classList.add('touch');
 // Quality presets: one place for every performance knob
 const Q = IS_TOUCH
-  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true, vol:true, volScale:0.25, volSteps:12}
-  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true, vol:true, volScale:0.5, volSteps:24};
+  ? {dpr:1.25, shadow:1024, shadowBox:26, ao:false, groundDetail:false, msaa:0, grass:5000, grassHalf:18, grassMid:3500, grassMidHalf:60, rocks:320, pebbles:900, fallen:14, ferns:560, bigLeaf:200, monstera:170, curtains:420, rain:3500, lianas:45, treeFerns:50, canopy:460, emergent:36, palms:200, crown:42, ceiling:220, saplings:260, orchids:70, blooms:130, frondShadow:false, fog:0.014, birds:0.6, rays:20, bloom:false, mist:30, flowers:120, canopyLight:true, canopyRes:512, wet:true, vol:true, volScale:0.25, volSteps:12, plantLod:12}
+  : {dpr:1.6, shadow:2048, shadowBox:40, ao:true,  groundDetail:true,  msaa:4,   grass:14000, grassHalf:28, grassMid:9000, grassMidHalf:95, rocks:750, pebbles:2600, fallen:30, ferns:1500, bigLeaf:520, monstera:420, curtains:1100, rain:10000, lianas:120, treeFerns:120, canopy:760, emergent:60, palms:420, crown:62, ceiling:620, saplings:650, orchids:150, blooms:280, frondShadow:true, fog:0.012, birds:1, rays:48, bloom:true, mist:70, flowers:320, canopyLight:true, canopyRes:1024, wet:true, vol:true, volScale:0.5, volSteps:24, plantLod:22};
 // Low-end desktops/laptops (few cores or little memory): keep the desktop forest but drop the costly camera effects
 // (?quality=high or ?quality=low in the URL overrides the guess)
 const QUALITY = new URLSearchParams(location.search).get('quality');
@@ -493,6 +495,27 @@ for (const [k,name] of Object.entries(GROUND_SETS)){
   groundTex[k] = ['diff','nor_gl','arm'].map(m => { const t = texLoader.load(`assets/textures/${name}_${m}_1k.jpg`);
     t.colorSpace = m==='diff' ? THREE.SRGBColorSpace : THREE.NoColorSpace;   // albedo is sRGB, normal/ARM are linear data
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = ANISO; return t; });
+}
+// Scanned models (scripts/build-models.mjs: meshopt-compressed GLBs with WebP textures). Each GLB holds a few variants,
+// one mesh per variant named a, b, c...; onModel() hands them to whoever asked (see "Scanned plants" and later sections).
+const gltfLoader = new GLTFLoader(loadManager).setMeshoptDecoder(MeshoptDecoder);
+const MODEL_WAIT = {};
+function onModel(name, fn){ (MODEL_WAIT[name] = MODEL_WAIT[name] || []).push(fn); }
+function loadModels(){
+  for (const name of Object.keys(MODEL_WAIT)) gltfLoader.load(`assets/models/${name}.glb`, g => {
+    g.scene.updateMatrixWorld(true);
+    const parts = {}; g.scene.traverse(o => { if (o.isMesh) parts[o.name] = {geo: floatGeo(o.geometry, o.matrixWorld), mat: o.material}; });
+    for (const fn of MODEL_WAIT[name]) fn(parts);
+  });
+}
+// Quantized GLB attributes (int16/uint16, normalized) to plain floats with the node transform baked in, so instance
+// matrices can scale them freely.
+function floatGeo(src, m){
+  const g = new THREE.BufferGeometry(); g.setIndex(src.index ? src.index.clone() : null);
+  for (const k in src.attributes){ const a = src.attributes[k], n = a.itemSize, f = new Float32Array(a.count*n), get = [a.getX, a.getY, a.getZ, a.getW];
+    for (let i=0;i<a.count;i++) for (let c=0;c<n;c++) f[i*n+c] = get[c].call(a, i);
+    g.setAttribute(k, new THREE.BufferAttribute(f, n)); }
+  g.applyMatrix4(m); g.computeBoundingBox(); g.computeBoundingSphere(); return g;
 }
 const hdrSky = hdrLoader.load('assets/hdri/kloofendal_38d_partly_cloudy_puresky_1k.hdr');   // the sky you see through the gaps
 const hdrEnv = hdrLoader.load('assets/hdri/rainforest_trail_1k.hdr');                       // image-based light from a real rainforest
@@ -874,6 +897,30 @@ function addWind(mat, mode, strength, glow=0, opt={}){
   return mat;
 }
 
+// Near/far hand-over for plants that have a scanned mesh (see "Scanned plants"): within uLodR of the player the mesh is
+// drawn, beyond uLodR+uLodW the atlas cards; across the band both dissolve into each other with complementary screen-door
+// dither (same per-pixel threshold, opposite test), so nothing pops or doubles. Cards hide on the GPU from their plant's
+// centre (aLodC); near meshes use their instance position. uLodR < 0 (model not loaded): cards everywhere.
+// depth: shadow-map variant, a hard switch in the middle of the band instead of the dither.
+const LOD_U = {uLodCam:{value:new THREE.Vector3(0,-1e6,0)}, uLodW:{value:3}};
+function lodFade(mat, rU, near, depth=false){
+  const ob = mat.onBeforeCompile, key = mat.customProgramCacheKey();
+  mat.onBeforeCompile = function(sh, r){ ob && ob.call(this, sh, r);
+    Object.assign(sh.uniforms, LOD_U, {uLodR:rU});
+    const keep = near ? (depth ? 'vLodF < 0.5' : 'vLodF < 1.0') : (depth ? 'vLodF >= 0.5' : 'vLodF > 0.0');
+    sh.vertexShader = (near ? '' : 'attribute vec3 aLodC;\n') + 'uniform vec3 uLodCam; uniform float uLodR, uLodW; varying float vLodF;\n' + sh.vertexShader.replace('#include <project_vertex>', `
+      { vec2 lc = ${near ? 'vec2(instanceMatrix[3][0], instanceMatrix[3][2])' : 'aLodC.xz'};
+        vLodF = uLodR < 0.0 ? 1.0 : clamp((length(lc - uLodCam.xz) - uLodR)/uLodW, 0.0, 1.0);   // 0 near .. 1 far
+        if (!(${keep})) transformed = vec3(0.0); }                                            // degenerate: nothing drawn
+      #include <project_vertex>`);
+    if (!depth) sh.fragmentShader = 'varying float vLodF;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+      { float lh = fract(52.9829189*fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (${near ? 'lh < vLodF' : 'lh >= vLodF'}) discard; }`);
+  };
+  mat.customProgramCacheKey = () => key + '|lod' + (near ? 'N' : 'F') + (depth ? 'D' : '');
+  return mat;
+}
+
 /* ================= Terrain ================= */
 {
   const g = new THREE.PlaneGeometry(400,400,200,200); g.rotateX(-Math.PI/2);
@@ -1070,7 +1117,12 @@ const bigLeafGeo = (() => { const g=new THREE.PlaneGeometry(0.42,1,4,6); g.trans
 // Collect transforms first, then build one instanced mesh per kind
 const T = {trunk:[], fin:[], branch:[], leaf:[], frond:[], palmFrond:[], bigLeaf:[], vine:[], flower:[], monstera:[], stem:[], curtain:[]};
 // cell: atlas rect for this instance; cn: crown normal (leaf cards are lit as part of their crown's volume)
-function put(list, x,y,z, rx,ry, sx,sy,sz, col, cell, cn){ list.push([x,y,z,rx,ry,sx,sy,sz,col,cell,cn]); }
+// lodC: while a plant that has a scanned near-LOD mesh is being placed, its cards carry the plant's centre (aLodC) so they
+// can hand over to the mesh near the player (see "Scanned plants")
+let LOD_C = null;
+function put(list, x,y,z, rx,ry, sx,sy,sz, col, cell, cn){ list.push([x,y,z,rx,ry,sx,sy,sz,col,cell,cn,LOD_C]); }
+// Plants drawn as scanned meshes near the player: [kind, x, y, z, size]; kind picks the GLB (see PLANT_LOD)
+const PLANTS = [];
 const CROWN_KINDS = ['broad','broad','small','small','pachira'];   // canopy species mix: simple-leaved trees dominate
 // Sun gaps: scattered holes in the crowns, lined up along SUN_DIR so a sun ray passes every crown layer through the
 // same hole. Leaf cards inside a hole are not placed and cards at its edge are shrunk so they don't close it (their
@@ -1163,21 +1215,27 @@ function palm(x,z){
 }
 function fern(x,z,yo){
   const y=yo ?? height(x,z), n=9+((rand()*6)|0), L=rr(0.8,2.0), cell=pick2(LEAF_SETS.fern);
+  PLANTS.push(['fern',x,y,z,L]); LOD_C=[x,y,z];
   for(let k=0;k<n;k++) put(T.frond,x,y,z, rr(0.6,1.25), k*6.283/n+rr(-.25,.25), L,L,L, tmpC.setRGB(rr(.7,1),rr(.85,1),rr(.6,.9)).clone(), rand2()<0.85 ? cell : pick2(LEAF_SETS.fern));
+  LOD_C=null;
 }
 function bigLeafPlant(x,z,yo){
   const y=yo ?? height(x,z), n=4+((rand()*4)|0), L=rr(1.0,2.3), set=rand2()<0.6 ? LEAF_SETS.broad : LEAF_SETS.herb;
+  PLANTS.push(['broad',x,y,z,L]); LOD_C=[x,y,z];
   for(let k=0;k<n;k++) put(T.bigLeaf,x,y,z, rr(0.25,0.95), rand()*6.283, L*rr(.8,1.1),L*rr(.8,1.1),L, tmpC.setRGB(rr(.8,1),rr(.85,1),rr(.75,.95)).clone(), rand2()<0.06 ? LEAF_SETS.dying[0] : pick2(set));
+  LOD_C=null;
 }
 // Monstera clump: leaves on long stalks fanning out and tilting toward the light
 function monsteraPlant(x,z){
   const y=height(x,z), n=5+((rand()*5)|0), big=rr(0.9,1.6), set=rand2()<0.65 ? LEAF_SETS.aroid : LEAF_SETS.round;
+  if (set===LEAF_SETS.round){ PLANTS.push(['round',x,y,z,big]); LOD_C=[x,y,z]; }   // round-leaved clumps: scanned calathea up close
   for(let k=0;k<n;k++){
     const yaw=k*6.283/n+rr(-.3,.3), tilt=rr(0.25,0.8), P=rr(0.7,1.6)*big;
     put(T.stem,x,y,z,tilt,yaw, 0.022*big,P,0.022*big);
     const tx=x+Math.sin(tilt)*Math.sin(yaw)*P, ty=y+Math.cos(tilt)*P, tz=z+Math.sin(tilt)*Math.cos(yaw)*P, L=rr(0.7,1.2)*big;
     put(T.monstera,tx,ty,tz, rr(1.0,1.45), yaw+rr(-.2,.2), L,L,L, tmpC.setRGB(rr(.85,1),rr(.9,1),rr(.8,1)).clone(), pick2(set));
   }
+  LOD_C=null;
 }
 // Monstera climbing a trunk: leaves pressed flat against the bark, leaning outward
 function climbingMonstera(x,z,y0,r,h){
@@ -1316,6 +1374,11 @@ let fallen=0; for(let t=0;t<400 && fallen<Q.fallen;t++){ const near=t%2===0, z=r
 
 function instanced(geo, mat, list, {cast=false, receive=false, colors=false}={}){
   // per-instance atlas cell (aCell) and crown normal (aCrownN) ride along as instanced attributes
+  if (list.some(t=>t[11])){   // plant centre for the near/far hand-over; cards without one never hand over
+    geo = geo.clone(); const lc=new Float32Array(list.length*3);
+    list.forEach((t,i)=>lc.set(t[11]||[1e6,0,1e6], i*3));
+    geo.setAttribute('aLodC', new THREE.InstancedBufferAttribute(lc,3));
+  }
   if (list.some(t=>t[9]) || list.some(t=>t[10])){
     geo = geo.clone();
     const cell=new Float32Array(list.length*4), cn=new Float32Array(list.length*3);
@@ -1328,9 +1391,10 @@ function instanced(geo, mat, list, {cast=false, receive=false, colors=false}={})
   m.castShadow = cast; m.receiveShadow = receive; scene.add(m); return m;
 }
 // Shadow casters for alpha-cut foliage: the same atlas cell and alpha as the visible leaf
-function cutoutDepth(alphaMap){
+function cutoutDepth(alphaMap, lodR){
   const d = new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking, alphaMap, alphaTest:0.5});
-  d.onBeforeCompile = atlasVertex; d.customProgramCacheKey = () => 'depth-atlas'; return d;
+  d.onBeforeCompile = atlasVertex; d.customProgramCacheKey = () => 'depth-atlas';
+  return lodR ? lodFade(d, lodR, false, true) : d;
 }
 // Leaves: double-sided, alpha-tested (no sorting), slightly glossy like a waxy tropical leaf, glowing when backlit
 const foliageMat = (D, A, rough, env) => wetKind(new THREE.MeshStandardMaterial({map:D, alphaMap:A, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:rough, envMapIntensity:env}), 3);
@@ -1344,15 +1408,21 @@ instanced(new THREE.CylinderGeometry(1,1,1,5).translate(0,0.5,0), wetKind(new TH
 instanced(new THREE.ConeGeometry(1,1,4).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({roughness:.4, envMapIntensity:.6}), 3), T.flower, {cast:false, receive:true, colors:true});
 const leafMat = addWind(foliageMat(FOLIAGE.cardD, FOLIAGE.cardA, 0.55, 0.8), 'leaf', 0.06, 1.0, {atlas:true, crown:true});
 const leaves = instanced(cardGeo, leafMat, T.leaf, {cast:true, receive:true, colors:true}); leaves.customDepthMaterial = cutoutDepth(FOLIAGE.cardA);
-const frondMat = addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.6, 0.7), 'frond', 0.12, 0.9, {atlas:true});
-const fronds = instanced(frondGeo, frondMat, T.frond, {cast:Q.frondShadow, receive:true, colors:true}); fronds.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
-const palmFronds = instanced(palmFrondGeo, frondMat, T.palmFrond, {cast:true, receive:true, colors:true}); palmFronds.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
-const bigMat = addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.45, 0.8), 'frond', 0.08, 1.0, {atlas:true});
-const bigLeaves = instanced(bigLeafGeo, bigMat, T.bigLeaf, {cast:Q.frondShadow, receive:true, colors:true}); bigLeaves.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
+// Plants with a scanned near mesh (PLANT_KINDS, see "Scanned plants"): uLodR per kind, -1 until its GLB is in
+const PLANT_KINDS = {
+  fern:  {model:'fern_02',               parts:['a','b','c','d'], fit:0.8,  wind:0.3,  rU:{value:-1}},   // ferns
+  broad: {model:'anthurium_botany_01',   parts:['a','b','c','d'], fit:0.75, wind:0.15, rU:{value:-1}},   // big-leaf herbs
+  round: {model:'calathea_orbifolia_01', parts:['a','b','c'],     fit:1.2,  wind:0.12, rU:{value:-1}},   // round-leaved clumps
+};
+const frondMat = lodFade(addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.6, 0.7), 'frond', 0.12, 0.9, {atlas:true}), PLANT_KINDS.fern.rU, false);
+const fronds = instanced(frondGeo, frondMat, T.frond, {cast:Q.frondShadow, receive:true, colors:true}); fronds.customDepthMaterial = cutoutDepth(FOLIAGE.leafA, PLANT_KINDS.fern.rU);
+const palmFronds = instanced(palmFrondGeo, addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.6, 0.7), 'frond', 0.12, 0.9, {atlas:true}), T.palmFrond, {cast:true, receive:true, colors:true}); palmFronds.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
+const bigMat = lodFade(addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.45, 0.8), 'frond', 0.08, 1.0, {atlas:true}), PLANT_KINDS.broad.rU, false);
+const bigLeaves = instanced(bigLeafGeo, bigMat, T.bigLeaf, {cast:Q.frondShadow, receive:true, colors:true}); bigLeaves.customDepthMaterial = cutoutDepth(FOLIAGE.leafA, PLANT_KINDS.broad.rU);
 const monsteraGeo = (() => { const g=new THREE.PlaneGeometry(0.8,1.05,4,6); g.translate(0,0.52,0); const p=g.attributes.position; for(let i=0;i<p.count;i++){ const x=p.getX(i), y=p.getY(i); p.setZ(i,0.14*y*y - 0.2*x*x); } g.computeVertexNormals(); return g; })();
-const monMat = addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.35, 1.0), 'frond', 0.05, 0.8, {atlas:true});
-const monLeaves = instanced(monsteraGeo, monMat, T.monstera, {cast:Q.frondShadow, receive:true, colors:true}); monLeaves.customDepthMaterial = cutoutDepth(FOLIAGE.leafA);
-instanced(new THREE.CylinderGeometry(1,1.3,1,5).translate(0,0.5,0), wetKind(new THREE.MeshStandardMaterial({color:'#4d6a32', roughness:.6}), 3), T.stem, {receive:true});
+const monMat = lodFade(addWind(foliageMat(FOLIAGE.leafD, FOLIAGE.leafA, 0.35, 1.0), 'frond', 0.05, 0.8, {atlas:true}), PLANT_KINDS.round.rU, false);
+const monLeaves = instanced(monsteraGeo, monMat, T.monstera, {cast:Q.frondShadow, receive:true, colors:true}); monLeaves.customDepthMaterial = cutoutDepth(FOLIAGE.leafA, PLANT_KINDS.round.rU);
+instanced(new THREE.CylinderGeometry(1,1.3,1,5).translate(0,0.5,0), lodFade(wetKind(new THREE.MeshStandardMaterial({color:'#4d6a32', roughness:.6}), 3), PLANT_KINDS.round.rU, false), T.stem, {receive:true});
 for (const ty of FLOWER_TYPES){
   // orchids and ground flowers: no self-glow, slightly muted, so they read as real petals in shade
   const mat=wetKind(new THREE.MeshStandardMaterial({map:ty.tex, alphaTest:0.5, alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.5, color:'#d9d2cc', envMapIntensity:0.6}), 3);
@@ -1361,6 +1431,53 @@ for (const ty of FLOWER_TYPES){
 const curtainGeo = new THREE.PlaneGeometry(1,1); curtainGeo.translate(0,-0.5,0);
 const curtainMat = addWind(foliageMat(FOLIAGE.cardD, FOLIAGE.cardA, 0.6, 0.7), 'hang', 0.25, 1.0, {atlas:true});
 const curtains = instanced(curtainGeo, curtainMat, T.curtain, {cast:Q.frondShadow, receive:true, colors:true}); curtains.customDepthMaterial = cutoutDepth(FOLIAGE.cardA);
+
+/* Scanned plants: Poly Haven ferns, anthuriums and calatheas (scripts/build-models.mjs) replace the atlas cards of the
+   nearest plants. Every fern, big-leaf herb and round-leaved clump keeps its seeded place (PLANTS); within Q.plantLod
+   metres it is drawn as a real mesh, beyond as cards, with a dithered hand-over band (lodFade). Re-bucketing: a few
+   thousand plants, so every time the player has moved 1.5 m (or every 30 frames) one CPU pass copies the matrices of
+   the plants inside the ring into one InstancedMesh per variant (a few dozen to ~150 instances, a few KB uploaded).
+   The far cards never touch the CPU: they hide on the GPU from their plant centre. Variant, turn and tint come from a
+   hash of the position, not from rand(). */
+const hash01 = (x,z,k) => { const v = Math.sin(x*12.9898 + z*78.233 + k*37.719)*43758.5453; return v - Math.floor(v); };
+const PLANT_LOD = {r:Q.plantLod, w:LOD_U.uLodW.value, at:new THREE.Vector2(1e9,1e9), frame:0, kinds:[]};
+for (const [kind, K] of Object.entries(PLANT_KINDS)) onModel(K.model, parts => {
+  const src = parts[K.parts[0]].mat;
+  if (src.map) src.map.anisotropy = ANISO;
+  const mat = lodFade(addWind(wetKind(new THREE.MeshStandardMaterial({map:src.map, normalMap:src.normalMap, normalScale:src.normalScale, alphaTest:0.5,
+    alphaToCoverage:A2C, side:THREE.DoubleSide, roughness:0.5, metalness:0, envMapIntensity:0.8}), 3), 'frond', K.wind, 0.9), K.rU, true);
+  const depth = lodFade(new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking, map:src.map, alphaTest:0.5}), K.rU, true, true);
+  const list = PLANTS.filter(p => p[0]===kind), V = K.parts.map(n => parts[n]).filter(Boolean);
+  const vars = V.map(({geo}) => { const b = geo.boundingBox;
+    return {geo, ext:Math.max(-b.min.x, b.max.x, -b.min.z, b.max.z, b.max.y), cap:0, n:0, mesh:null}; });
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), v3 = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+  const recs = list.map(([, x, y, z, size]) => {
+    const v = (hash01(x,z,1)*vars.length)|0, s = K.fit*size/vars[v].ext, t = 0.85 + 0.15*hash01(x,z,3);
+    m4.compose(v3.set(x, y - 0.02*s, z), q.setFromAxisAngle(up, hash01(x,z,2)*6.283), sc.set(s,s,s));
+    vars[v].cap++; return {x, z, v, m:m4.toArray(new Float32Array(16)), c:[t*0.95, t, t*0.92]};
+  });
+  for (const va of vars){
+    va.mesh = new THREE.InstancedMesh(va.geo, mat, Math.max(1, va.cap)); va.mesh.count = 0;
+    va.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    va.mesh.setColorAt(0, col.setRGB(1,1,1)); va.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    va.mesh.frustumCulled = false;   // the ring is around the camera anyway; bounds change with every re-bucket
+    va.mesh.castShadow = Q.frondShadow; va.mesh.receiveShadow = true; va.mesh.customDepthMaterial = depth;
+    scene.add(va.mesh); if (running) worldLit(mat);
+  }
+  PLANT_LOD.kinds.push({recs, vars});
+  K.rU.value = PLANT_LOD.r; PLANT_LOD.at.set(1e9, 1e9);   // hand over now
+});
+function updatePlantLOD(cx, cz){
+  const R = PLANT_LOD.r + PLANT_LOD.w + 0.5, R2 = R*R;
+  for (const {recs, vars} of PLANT_LOD.kinds){
+    for (const va of vars) va.n = 0;
+    for (const r of recs){ const dx = r.x - cx, dz = r.z - cz; if (dx*dx + dz*dz > R2) continue;
+      const va = vars[r.v]; va.mesh.instanceMatrix.array.set(r.m, va.n*16); va.mesh.instanceColor.array.set(r.c, va.n*3); va.n++; }
+    for (const va of vars){ va.mesh.count = va.n;
+      va.mesh.instanceMatrix.clearUpdateRanges(); va.mesh.instanceMatrix.addUpdateRange(0, va.n*16); va.mesh.instanceMatrix.needsUpdate = true;
+      va.mesh.instanceColor.clearUpdateRanges(); va.mesh.instanceColor.addUpdateRange(0, va.n*3); va.mesh.instanceColor.needsUpdate = true; }
+  }
+}
 
 /* Ground cover: low tropical plants computed on the GPU that wrap around the player (near and mid rings), so the whole
    floor is covered without storing every plant. Each instance is a rosette of five photographic leaves from the leaf
@@ -2243,6 +2360,9 @@ function frame(ts){
   sun.position.copy(shC).addScaledVector(SUN_DIR,120);
   sun.target.position.copy(shC);
   sky.position.copy(camera.position);
+  LOD_U.uLodCam.value.copy(camera.position);
+  if (PLANT_LOD.kinds.length && (++PLANT_LOD.frame % 30 === 0 || Math.hypot(PLANT_LOD.at.x - player.x, PLANT_LOD.at.y - player.z) > 1.5)){
+    PLANT_LOD.at.set(player.x, player.z); updatePlantLOD(player.x, player.z); }
 
   // Ambient world
   water.position.y = WATER_Y + Math.sin(t*0.7)*0.03;
@@ -2388,6 +2508,7 @@ function maybeStart(){
   // compile every shader before showing Enter, so the first frames are not black or untextured
   renderer.compileAsync(scene, camera).then(go, go);
 }
+loadModels();   // every onModel() is registered by now; the GLBs count in the loading bar
 // ?debug exposes a few internals for the screenshot/fps scripts (camera placement, terrain height)
 if (new URLSearchParams(location.search).has('debug')){
   // layout fingerprint: proves appearance changes never moved a seeded tree, rock, log or bird

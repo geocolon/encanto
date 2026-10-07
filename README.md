@@ -57,5 +57,5 @@ The script syntax-checks the game code and, if Playwright is installed (`npm i -
 ## Built with
 
 - [three.js](https://threejs.org/) r186 (MIT)
-- [Poly Haven](https://polyhaven.com/) (CC0): Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps)
+- [Poly Haven](https://polyhaven.com/) (CC0): Rainforest Trail and Kloofendal 38d Partly Cloudy (Pure Sky) HDRIs; Forest Leaves 03, Brown Mud Leaves 01, Red Laterite Soil Stones, Japanese Hackberry Bark, Moss Wood and Palm Tree Bark textures; Fern 02, Anthurium Botany 01, Calathea Orbifolia 01, Pachira Aquatica 01, Shrub Sorrel 01, Potted Plant 02 and Weed Plant 02 models (leaf maps); Fern 02, Anthurium Botany 01 and Calathea Orbifolia 01 scanned meshes (in `assets/models/`, built by `scripts/build-models.mjs`)
 - Fonts: Spectral SC and Karla from Google Fonts (SIL Open Font License)
