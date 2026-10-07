@@ -28,10 +28,10 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 
 ## Map of index.html
 
-- `Q` quality presets (phone vs desktop): counts of trees, grass, rocks, birds, rain, fog density, bloom, shadow size, and the stage-3 switches `canopyLight`/`canopyRes`, `msaa`, `wet`, `vol`/`volScale`/`volSteps` (the low-end tier overrides `msaa:0`). Most "more / less / denser" requests are a change here.
+- `Q` quality presets (phone vs desktop): counts of trees, grass, rocks, birds, rain, fog density, bloom, shadow size, and the stage-3 switches `canopyLight`/`canopyRes`, `msaa`, `wet`, `vol`/`volScale`/`volSteps`, and the stage-4 `plantLod` (scanned-plant switch distance), `vineSeg`, `seedlings` (the low-end tier overrides `msaa:0`). Most "more / less / denser" requests are a change here.
 - `height(x,z)` terrain shape, `pathX(z)` the trail line, `GAPS` the sky window, `POND`, `WAYSTONE`.
 - Import map and module imports at the top of the game script (three 0.186.1 and `three/addons/`). The splash and details-menu scripts are classic scripts so they work even if the CDN fails.
-- Asset loading: `THREE.LoadingManager` drives the "Loading the forest…" progress on the start card; Enter appears only once assets have loaded and shaders have compiled.
+- Asset loading: `THREE.LoadingManager` drives the "Loading the forest…" progress on the start card; Enter appears only once assets have loaded and shaders have compiled. GLB models: `GLTFLoader` + `MeshoptDecoder` through the same manager; `onModel(name, fn)` registers a consumer, `loadModels()` loads them, `floatGeo()` unpacks quantized geometry. The GLBs in `assets/models/` are built by `scripts/build-models.mjs` (Poly Haven sources, simplified, meshopt, WebP textures).
 - Quality tiers: phone / low-end / desktop detection, overridable with `?quality=high` or `?quality=low`.
 - Procedural textures: `makeTex(...)` only for stone (`stoneTex`), flowers, morpho wings (`morphoTex`), `dotTex`, `rayTex`. Retired canvases (leaf litter, bark, leaves, fronds, big leaf, monstera, vine curtains) are `burnTex(...)` no-ops kept for the seeded `rand()` order.
 - Scanned materials: `barkMaterial(set, opts)` with `BARK` sets (Poly Haven bark, moss, palm PBR); foliage from `FOLIAGE` atlases + `LEAF_CELLS`/`CARD_CELLS` (built by `scripts/build-foliage.py`), picked per instance via `aCell`.
@@ -41,7 +41,11 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 - `addWind(mat, mode, strength, glow)`: shared wind and backlit-leaf shader.
 - Mountain ring (360° horizon) with aerial-perspective haze.
 - Rainforest layers: `giant`, `canopyTree`, `sapling`, `palm`, `fern`, `treeFern`, `bigLeafPlant`, `monsteraPlant`, `climbingMonstera`, `vineCurtains`, `hangVines`, `orchidSpray`, `bloomClump`, `boulder`, `fallenTree`.
-- `grassLayer(N, half, inner, wMul, hMul)`: GPU grass that wraps around the player (near and mid layers). Its shader has its own copy of the terrain formula in `terrainH`; if you change `height()` or `pathX()`, change `terrainH`/`gPathX` to match.
+- Scanned plants: `PLANT_KINDS`/`PLANTS`; real meshes near the player, atlas cards beyond, swapped with a dithered band (`lodFade()`); near instances refilled by `updatePlantLOD()` every 1.5 m walked or 30 frames, far cards cull themselves on the GPU (`aLodC`).
+- Scanned ground objects: `scanSwap()` reuses each primitive rock/log/root-plate instance transform for a GLB (the primitives stay as fallback), `mossCover()` mosses upward faces, `BASES`/`GROOTS` place root plates and roots between buttresses.
+- Trees and vines: `makeTrunkGeo` (lobed, twisting, leaning trunk variants), `makeFinGeo` (plank buttresses), `limbGeo` (curved limbs; giant limbs fork); `ropes()`/`ropeMat` are the instanced sagging lianas and vines.
+- Heliconias: `heliconia()` with `bananaTex` leaves and `bractGeo` bracts.
+- `grassLayer(N, half, inner, wMul, hMul)`: GPU grass that wraps around the player (near and mid layers). Its shader has its own copy of the terrain formula in `terrainH`; if you change `height()` or `pathX()`, change `terrainH`/`gPathX` to match. Outside the clearing and pond edge it draws leaf litter and seedlings (`uSeedlings`) instead of lawn.
 - Sun shower: `rainU` uniforms (speed, wind, opacity; constant, the shower never stops), `WET_U.uWet` (follows the rain opacity, `WET_MAX` 0.7) and pond `ripples`.
 - Animals: `SPECIES` table and `makeBird`, `trailFlight` flight plans, hummingbirds, morphos, toucans, capybaras.
 - Audio: `startAudio()` (cicadas, rain hiss, leaf patter, drips) and `call()` (bird calls).
@@ -53,7 +57,7 @@ If a request is ambiguous or would remove something large (a whole animal, the r
 
 - Code lives in `index.html`; binary assets live in `assets/`. three.js is **0.186.1**, loaded as ES modules through the import map from cdn.jsdelivr.net; add-ons come from `three/addons/` at the same pinned version. Never mix versions or go back to r128 / `examples/js` globals. Use current APIs: `colorSpace` (not `encoding`), physical light units, `THREE.Timer`.
 - Colour management is on: diffuse/colour textures use `SRGBColorSpace`, normal/roughness/ARM maps stay linear.
-- The world is generated from a seeded random (`mulberry32(20260930)`). Changing the order of generation changes the whole layout; add new generation steps after existing ones when you can. Retire a canvas texture by turning it into `burnTex(...)`, never by deleting it; appearance-only randomness uses `rand2`/`pick2`, not `rand()`.
+- The world is generated from a seeded random (`mulberry32(20260930)`). Changing the order of generation changes the whole layout; add new generation steps after existing ones when you can. Retire a canvas texture by turning it into `burnTex(...)`, never by deleting it; appearance-only randomness uses `rand2`/`pick2`, not `rand()`; appearance tied to a position uses `hash01(x,z,k)`. `scripts/shots.sh` prints a layout hash: it must not change unless the user asks for a new layout.
 - Respect performance: the desktop scene is already heavy. When you add something big, consider trimming something less visible, and say so in the commit body.
-- Assets: only CC0 or similarly free-to-redistribute sources (Poly Haven preferred), downloaded into `assets/` (not hot-linked), at the smallest resolution that looks right (1k textures by default), compressed JPEG/KTX2 for textures and GLB (Draco/meshopt) for models. Credit each new source in the details menu Credits and the README. Keep a running size budget and report the total size of `assets/` in your report.
+- Assets: only CC0 or similarly free-to-redistribute sources (Poly Haven preferred), downloaded into `assets/` (not hot-linked), at the smallest resolution that looks right (1k textures by default), compressed JPEG/KTX2 for textures and GLB (meshopt, via `scripts/build-models.mjs`) for models. Credit each new source in the details menu Credits and the README. Keep a running size budget and report the total size of `assets/` in your report.
 - Do not commit secrets, API keys or `node_modules`.
